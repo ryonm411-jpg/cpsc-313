@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Value Forwarding</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 1 of 2 · slides 2.3</div>
+  <h1>Value Forwarding</h1>
+  <p class="subtitle">Two questions answer every forwarding problem: <em>when do I need it?</em> and <em>when does it exist?</em></p>
+</header>
+
+<p><strong>Your win for today:</strong> given any producer → consumer pair, name the exact signal the value is forwarded from (<code>e_valE</code>, <code>M_valE</code>, <code>W_valE</code>, <code>m_valM</code>, <code>W_valM</code>) and how many stall cycles remain. That's precisely what in-class questions I9.1 and I9.3 ask. About 15 minutes.</p>
+
+<h2>Warm-up: recall from last lecture</h2>
+
+<div class="quiz" data-answer="3">
+  <p class="q">No forwarding, stalling only. How many cycles does <code>subq</code> stall?</p>
+  <pre><code>addq %rax, %rbx
+subq %rbx, %rcx</code></pre>
+  <ol class="opts">
+    <li>0 cycles</li><li>1 cycle</li><li>2 cycles</li><li>3 cycles</li>
+  </ol>
+  <div class="why">
+    <p><code>subq</code> sits in Decode until <code>addq</code> has written <code>%rbx</code> in Write-back. The register file only shows the new value the <em>following</em> cycle, so <code>subq</code> spends 4 cycles in D (<code>F D D D D E</code>): 3 stalls. Slides 2.3, “Recall stalling”.</p>
+    <div id="dg-nofwd"></div>
+  </div>
+</div>
+
+<p>Three wasted cycles for the most common pattern in all of code: compute something, then use it. Forwarding fixes this.</p>
+
+<h2>1 · Need vs. have</h2>
+
+<p>The slides ask two questions <a href="../2.3-valueForwarding%20(2).pdf" class="cite">slides 2.3, “Forwarding (1)/(2)”</a>:</p>
+
+<ol class="steps">
+  <li><strong>When does <code>subq</code> NEED <code>%rbx</code>?</strong> By the <em>end of its Decode</em> stage, because Execute starts next cycle and the ALU needs its operands then.</li>
+  <li><strong>When does <code>addq</code> HAVE <code>%rbx</code>?</strong> At the <em>end of its Execute</em> stage. The ALU just produced it. That signal is called <code>e_valE</code>.</li>
+</ol>
+
+<p>Those happen in the <strong>same cycle</strong>. <code>addq</code> is in E while <code>subq</code> is in D. So we add a wire from the ALU output back into Decode's operand-select logic (the slide's “Forward A / Forward B” boxes). No stall.</p>
+
+<div class="callout key">
+  <span class="label">The core idea</span>
+  The value already exists somewhere in the pipeline. It just hasn't reached the register file yet. Forwarding takes it from wherever it currently is and delivers it to Decode.
+</div>
+
+<h2>2 · Reading the signal names</h2>
+
+<p>The names follow a strict convention from CS:APP <a href="https://csapp.cs.cmu.edu/" class="cite">Bryant &amp; O’Hallaron, CS:APP 3e §4.5.3</a>:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Prefix</th><th>Means</th><th>Example</th></tr>
+  <tr><td><strong>lowercase</strong> <code>e_</code>, <code>m_</code></td><td>a signal <em>computed this cycle</em> by that stage's logic (its output)</td><td><code>e_valE</code> = ALU output right now · <code>m_valM</code> = data-memory output right now</td></tr>
+  <tr><td><strong>UPPERCASE</strong> <code>M_</code>, <code>W_</code></td><td>a value <em>stored in that pipeline register</em> (computed by an earlier stage, last cycle or before)</td><td><code>M_valE</code> = the ALU result of the instruction now in Memory · <code>W_valM</code> = loaded value of the instruction now in Write-back</td></tr>
+</table>
+</div>
+
+<p>And the suffix tells you <em>which kind</em> of value:</p>
+<ul>
+  <li><strong>valE</strong>: the ALU result (<code>OPq</code>, <code>irmovq</code>, <code>rrmovq</code>/<code>cmovXX</code>, and the new <code>%rsp</code> from <code>push</code>/<code>pop</code>/<code>call</code>/<code>ret</code>). It first exists at the <em>end of Execute</em>.</li>
+  <li><strong>valM</strong>: a value read from memory (<code>mrmovq</code>, and the register target of <code>popq</code>). It first exists at the <em>end of Memory</em>.</li>
+</ul>
+
+<p class="muted">Why is there no <code>m_valE</code> in the forwarding logic? The Memory stage doesn't change valE. It just passes it along, so the value sitting in the M register (<code>M_valE</code>) is the one to use. <code>m_valE</code> is a distractor in I9.3.</p>
+
+<h2>3 · The distance rule</h2>
+
+<p>Count the <strong>distance</strong>: how many instructions later the consumer comes (back-to-back = 1; one instruction between = 2). While the consumer is in Decode, the producer is <em>distance</em> stages ahead:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Distance</th><th>Producer is in…</th><th>ALU result (valE)</th><th>Loaded value (valM)</th><th>No forwarding: stalls</th></tr>
+  <tr><td>1</td><td>Execute</td><td><code>e_valE</code> · 0 stalls</td><td><strong>1 stall</strong>, then <code>m_valM</code></td><td>3</td></tr>
+  <tr><td>2</td><td>Memory</td><td><code>M_valE</code></td><td><code>m_valM</code></td><td>2</td></tr>
+  <tr><td>3</td><td>Write-back</td><td><code>W_valE</code></td><td><code>W_valM</code></td><td>1</td></tr>
+  <tr><td>4+</td><td>done</td><td colspan="2">register file (no forwarding needed)</td><td>0</td></tr>
+</table>
+</div>
+
+<p class="muted">Careful: <code>nop</code>s count toward distance. So does any unrelated instruction between producer and consumer.</p>
+
+<div id="dg-chain"></div>
+<p class="legend">Above: one producer feeding consumers at distance 1, 2 and 3, with forwarding. No stalls. Each consumer grabs <code>%rbx</code> from a different place.</p>
+
+<h2>4 · The one case forwarding can't fix: load/use</h2>
+
+<p>Swap the <code>addq</code> for a load:</p>
+<pre><code>mrmovq 0(%rax), %rbx
+addq   %rbx, %rcx</code></pre>
+
+<p>The loaded value first exists at the <em>end of Memory</em>. But <code>addq</code> needs it at the end of <em>Decode</em>, which is the same cycle <code>mrmovq</code> is still in <em>Execute</em>. The value doesn't exist yet. A wire can't send it back in time. So the hardware stalls <code>addq</code> <strong>one</strong> cycle, then forwards <code>m_valM</code> <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.5, “Load/use data hazards”</a>.</p>
+
+<div id="dg-load"></div>
+
+<div class="callout">
+  <span class="label">Exam phrasing trap</span>
+  If a question asks how to make a back-to-back load/use run <em>“without stalling”</em>, the answer is “forwarding is needed, but it's not possible to forward a value that will make this work.” If it asks <em>“with stalling and forwarding”</em>, the answer is 1 stall + <code>m_valM</code>.
+</div>
+
+<h2>5 · Check yourself</h2>
+
+<div class="quiz" data-answer="1">
+  <p class="q">Slide 2.3, “Hey, Quick Q”. Where is <code>%rbx</code> when <code>subq</code> needs it?</p>
+  <pre><code>addq   %rax, %rbx
+irmovq 10, %rdx
+subq   %rbx, %rcx</code></pre>
+  <ol class="opts">
+    <li><code>e_valE</code></li><li><code>M_valE</code></li><li><code>W_valE</code></li><li><code>m_valM</code></li>
+  </ol>
+  <div class="why"><p>Distance 2. <code>subq</code> still needs the value at the end of its Decode (same spot as before). But <code>addq</code> is now one stage further along, in Memory, so the value sits in the M pipeline register: <code>M_valE</code>.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">The slides list three ideas that <em>don't</em> work. Why can't we just forward <code>e_valE</code> to the start of the Execute stage?</p>
+  <ol class="opts">
+    <li>The ALU result is too wide to forward</li>
+    <li>Execute has no input port for it</li>
+    <li>It feeds an instruction its own output</li>
+    <li>The register file would be overwritten</li>
+  </ol>
+  <div class="why"><p>Feeding <code>e_valE</code> into the start of Execute delivers the value to the <em>same</em> instruction that produced it. That creates a combinational loop. The other two failures: writing <code>e_valE</code> into the register file (only readable next cycle, too late), and forwarding <code>M_valE</code> to the new logic (it's in the M register only <em>next</em> cycle).</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q">With forwarding: how many stall cycles, and from where?</p>
+  <pre><code>popq   %rbx
+nop
+rrmovq %rbx, %rdx</code></pre>
+  <ol class="opts">
+    <li>0 stalls, <code>m_valM</code></li><li>0 stalls, <code>M_valE</code></li><li>1 stall, <code>m_valM</code></li><li>1 stall, <code>W_valM</code></li>
+  </ol>
+  <div class="why"><p><code>popq</code> loads <code>%rbx</code> from memory, so it's a valM value. Distance 2 means <code>popq</code> is in Memory exactly when <code>rrmovq</code> is in Decode, and the memory output <code>m_valM</code> is ready by the end of that cycle. No stall. (<code>M_valE</code> would be the new <code>%rsp</code>, which is a different register.)</p></div>
+</div>
+
+<h2>6 · Practice until it's boring</h2>
+
+<p>Endless randomly generated problems. The simulator checks you and draws the pipeline diagram. Do at least <strong>8 in a row correct</strong>. Answer before you look anything up; the effort of recalling is what makes it stick.</p>
+
+<div id="drill"></div>
+
+<h2>Why this matters</h2>
+<p>Early RISC chips had no stalling and no forwarding. The compiler, or a human writing assembly, had to insert <code>nop</code>s by hand. Today the hardware handles it <a href="../2.3-valueForwarding%20(2).pdf" class="cite">slides 2.3, “Wrapping Up”</a>. You're learning what that hardware has to work out every cycle.</p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Read <strong>CS:APP 3e, §4.5.5 “Pipeline Hazards”</strong>, specifically the subsections <em>Avoiding Data Hazards by Forwarding</em> and <em>Load/Use Data Hazards</em>. Figures 4.49–4.54 show exactly the cycle-by-cycle pictures above. <a href="https://csapp.cs.cmu.edu/">csapp.cs.cmu.edu</a>. Then skim your own <a href="../2.3-valueForwarding%20(2).pdf">slides 2.3</a>.
+</div>
+
+<div class="callout key">
+  <span class="label">Spacing</span>
+  Tomorrow, before Lesson 2, open this page and do 5 drills <em>cold</em>. Struggling a little is the point. It's what moves this into long-term memory.
+</div>
+
+<p class="ask">Stuck on anything, or does a diagram not make sense? Ask me (your teacher, in the terminal). Questions like “why can't the value come from X?” are exactly the right ones.</p>
+
+<nav class="lesson-nav">
+  <a href="../reference/0001-pipeline-hazards-cheatsheet.html">Cheat sheet</a>
+  <a href="0002-control-hazards-branch-prediction.html">Lesson 2: Control hazards &amp; branch prediction →</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/drills.js"></script>
+<script>
+  function show(id, src, opts) { Y86.render(document.getElementById(id), Y86.simulate(Y86.parse(src), opts)); }
+  show('dg-nofwd', 'addq %rax, %rbx\nsubq %rbx, %rcx', { forwarding: false });
+  show('dg-chain', 'addq %rax, %rbx\nrrmovq %rbx, %rdx    # dist 1: e_valE\naddq %rbx, %rsi      # dist 2: M_valE\nsubq %rbx, %rdi      # dist 3: W_valE', {});
+  show('dg-load', 'mrmovq 0(%rax), %rbx\naddq %rbx, %rcx', {});
+  Drill.forwarding(document.getElementById('drill'));
+</script>
+</body>
+</html>

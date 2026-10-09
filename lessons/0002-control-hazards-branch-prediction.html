@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Branch Prediction</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 2 of 2 · slides 2.4</div>
+  <h1>Control Hazards &amp; Branch Prediction</h1>
+  <p class="subtitle">Fetch has to pick the next address every cycle, sometimes before anyone knows what it is.</p>
+</header>
+
+<p><strong>Your win for today:</strong> count the total stall + squash cycles for a short y86 program under any setting (forwarding on or off; no prediction, never taken, always taken, or backward-taken/forward-not-taken). That's exactly the I10.1 / I10.2 / P9.2 question type. About 20 minutes.</p>
+
+<h2>Warm-up: interleaved recall from Lesson 1</h2>
+
+<div class="quiz" data-answer="2">
+  <p class="q">With forwarding, how many stalls, and from where does <code>andq</code> get <code>%r8</code>?</p>
+  <pre><code>mrmovq 0x10(%rdi), %r8
+andq   %r8, %r9</code></pre>
+  <ol class="opts">
+    <li>0 stalls, <code>e_valE</code></li><li>0 stalls, <code>m_valM</code></li><li>1 stall, <code>m_valM</code></li><li>2 stalls, <code>W_valM</code></li>
+  </ol>
+  <div class="why"><p>Load/use at distance 1. The loaded value exists only at the end of Memory, so one bubble is unavoidable. After that, <code>andq</code> is in Decode while <code>mrmovq</code> is in Memory → <code>m_valM</code>. <a href="0001-value-forwarding.html">Lesson 1 §4</a>.</p></div>
+</div>
+
+<h2>1 · Who doesn't know the next PC?</h2>
+
+<p>Each cycle, Fetch must choose the next instruction's address. Most instructions make that easy: next PC = <code>valP</code> (the address right after). The trouble comes from instructions that change control flow <a href="../2.4-branchPrediction.pdf" class="cite">slides 2.4, “Dealing with Control Hazards”</a>:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Instruction</th><th>Target known…</th><th>Cost</th><th>Why</th></tr>
+  <tr><td><code>jmp</code>, <code>call</code></td><td>in Fetch</td><td><strong>0</strong></td><td>the target is <code>valC</code>, a constant inside the instruction bytes</td></tr>
+  <tr><td><code>ret</code></td><td>after Memory</td><td><strong>3 stalls</strong></td><td>the return address is read off the stack in Memory, then used once <code>ret</code> reaches Write-back</td></tr>
+  <tr><td><code>jXX</code> (conditional)</td><td>after Execute</td><td><strong>2 cycles</strong> if we wait</td><td>the condition codes are checked in Execute (<code>e_Cnd</code>). The right instruction is fetched when <code>jXX</code> is in Memory.</td></tr>
+</table>
+</div>
+
+<div id="dg-ret"></div>
+<p class="legend">Above: <code>ret</code> holds up the next fetch until it reaches W: 3 lost cycles.</p>
+
+<div class="callout">
+  <span class="label">Not control hazards</span>
+  <code>cmovXX</code> never changes the PC. It's a conditional <em>data</em> move, so it's handled like any other ALU result (valE + forwarding). Branch prediction has nothing to do with it. Same for <code>rmmovq</code>, <code>OPq</code>, and so on.
+</div>
+
+<div class="quiz" data-answer="0,1,3" data-multi>
+  <p class="q">Which can cause a control hazard? (select all)</p>
+  <ol class="opts">
+    <li><code>jle</code></li><li><code>jne</code></li><li><code>cmovge</code></li><li><code>ret</code></li><li><code>rmmovq</code></li>
+  </ol>
+  <div class="why"><p>Conditional jumps (outcome unknown until Execute) and <code>ret</code> (target unknown until Memory). <code>cmovge</code> moves data conditionally but the next PC is still <code>valP</code>. <code>rmmovq</code> only writes memory.</p></div>
+</div>
+
+<h2>2 · Guess, then fix it if wrong</h2>
+
+<p>Instead of stalling 2 cycles on every <code>jXX</code>, Fetch <strong>predicts</strong> and keeps going <a href="../2.4-branchPrediction.pdf" class="cite">slides 2.4, “Branch prediction”</a>:</p>
+<ul>
+  <li><strong>Never taken</strong>: guess next PC = <code>valP</code> (fall through).</li>
+  <li><strong>Always taken</strong>: guess next PC = <code>valC</code> (the jump target). Both are available in Fetch, so either guess costs nothing to make.</li>
+  <li><strong>Backward taken, forward not taken (BTFNT)</strong>: a backward jump is usually a loop, so guess taken. A forward jump is usually an <code>if</code>, so guess not taken.</li>
+</ul>
+
+<p>If the guess was <strong>right</strong>: 0 lost cycles. If <strong>wrong</strong>: by the time Execute finds out, <strong>2 wrong-path instructions</strong> are already in Fetch and Decode. The hardware <em>squashes</em> them (turns them into bubbles/nops) and fetches the right one. That costs 2 cycles, the same as not predicting at all. So prediction never makes things worse.</p>
+
+<div id="dg-mis"></div>
+<p class="legend">Above: never-taken prediction, but <code>je</code> <em>is</em> taken. The two struck-through instructions are squashed.</p>
+
+<p class="muted">To recover from a wrong “taken” guess, the pipeline must remember the fall-through address. That's why <code>valP</code> travels down the pipeline with the jump, as <code>M_valA</code> <a href="../2.4-branchPrediction.pdf" class="cite">slides 2.4, “What if we mispredict?”</a>.</p>
+
+<h3>Which guess is best?</h3>
+<p>From the slides: always taken is right ≈60% of the time, never taken ≈40%, BTFNT ≈65%. Real CPUs spend a lot of hardware here, e.g. 1-bit predictors (“do what this branch did last time”) and per-PC tables. Linux even lets programmers give hints with <code>likely()</code>/<code>unlikely()</code>. For <em>one specific program</em>, though, count it: the best predictor is the one that's right for the branch that runs the most.</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q">This loop's <code>jg loop</code> runs 10 times: taken 9 times, then not taken once. Which predictor loses fewer cycles?</p>
+  <ol class="opts">
+    <li>Never taken</li><li>Always taken</li><li>No prediction</li><li>All equal</li>
+  </ol>
+  <div class="why"><p>Always taken mispredicts only the final exit: 1 × 2 = 2. Never taken mispredicts all 9 taken iterations: 18. No prediction stalls on every execution: 10 × 2 = 20. A <em>backward</em> loop branch is the classic always-taken case. If the loop instead exits with a <em>forward</em> <code>jge loop_end</code> that's only taken once, the answer flips. Check which way the jump goes!</p></div>
+</div>
+
+<h2>3 · The counting procedure</h2>
+
+<p>This handles every I10-style question:</p>
+
+<ol class="steps">
+  <li><strong>Trace the values.</strong> Compute registers and the condition codes (set by the last <code>OPq</code>) so you know the <em>actual</em> outcome of each <code>jXX</code>. Unset registers are 0. Watch for <code>divq</code>/<code>mulq</code>/<code>andq</code>/<code>xorq</code>: <code>-8 / -19 = 0</code> (truncates), so ZF=1.</li>
+  <li><strong>Walk only the executed path</strong>, in order.</li>
+  <li><strong>Data hazards:</strong> for each instruction, find the most recent writer of each source register and apply Lesson 1's distance table. With forwarding, only load/use at distance 1 costs anything (1). Without, 3/2/1 stalls at distance 1/2/3.</li>
+  <li><strong>Control:</strong> each <code>jXX</code> costs 2 if there's no prediction or the guess is wrong, else 0. Each <code>ret</code> costs 3. <code>jmp</code>/<code>call</code> cost 0.</li>
+  <li><strong>Add it up.</strong> CPI = (instructions executed + lost cycles) / instructions executed, counting the final <code>halt</code> and <em>not</em> counting squashed instructions <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.9</a>.</li>
+</ol>
+
+<div class="callout">
+  <span class="label">Subtlety: stalls overlap</span>
+  Without forwarding, a stall on one instruction also gives later instructions extra time. So the distance-table numbers <em>can't simply be added</em> when hazards are close together. Measure distance in cycles, not just instructions. If in doubt, draw the diagram (or paste the code into the sandbox below).
+</div>
+
+<h3>Worked example</h3>
+<pre><code>irmovq $3, %rbx
+irmovq $5, %rcx
+subq   %rbx, %rcx      # rcx = 5 - 3 = 2  →  ZF=0, SF=0
+jle    L1              # 2 ≤ 0? no → NOT taken
+mrmovq 0(%rbp), %rsi
+addq   %rsi, %rdi      # uses the loaded %rsi immediately
+L1:
+halt</code></pre>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Configuration</th><th>Data</th><th>Control</th><th>Total</th><th>CPI (7 instr.)</th></tr>
+  <tr><td>forwarding + always taken</td><td>1 (load/use)</td><td>2 squashed (<code>jle</code> mispredicted)</td><td><strong>3</strong></td><td>10/7 ≈ 1.43</td></tr>
+  <tr><td>forwarding + never taken</td><td>1</td><td>0 (guessed right)</td><td><strong>1</strong></td><td>8/7 ≈ 1.14</td></tr>
+  <tr><td>no forwarding, no prediction</td><td>3 (<code>subq</code>←<code>%rcx</code>) + 3 (<code>addq</code>←<code>%rsi</code>)</td><td>2 stalls</td><td><strong>8</strong></td><td>15/7 ≈ 2.14</td></tr>
+</table>
+</div>
+
+<div id="dg-worked"></div>
+<p class="legend">Diagram for the first row (forwarding + always taken).</p>
+
+<h2>4 · Transfer: reason about a new instruction</h2>
+
+<p>Exam questions often invent an instruction and ask you to reason about it. Use the same question as before: <em>at what stage is the next PC first known?</em></p>
+
+<div class="quiz" data-answer="1">
+  <p class="q">A made-up <code>jmpR rB</code> jumps to the address held in register <code>rB</code>. With full forwarding, where is the target first available?</p>
+  <ol class="opts">
+    <li>Fetch</li><li>Decode</li><li>Execute</li><li>Memory</li>
+  </ol>
+  <div class="why"><p>Registers are read (or forwarded) in <strong>Decode</strong>. The target isn't in the instruction bytes, so Fetch can't know it. But it doesn't need the ALU or memory either. So Fetch has to wait for <code>jmpR</code> to finish Decode. Work out how many cycles that costs compared to <code>jmp</code> (0) and <code>ret</code> (3), then ask me if you want to check your reasoning.</p></div>
+</div>
+
+<h2>5 · Practice</h2>
+
+<p>Randomly generated I10/P9.2-style problems, checked by the simulator. Use the menus to focus on one setting, or leave everything on random to mix them up (the harder, better kind of practice). Aim for <strong>5 correct in a row</strong>. Trace on paper first.</p>
+
+<div id="drill"></div>
+
+<h3>Sandbox: check your own code</h3>
+<p>Paste any snippet, such as a homework problem or the program you're writing for exercise 10.2. Supports <code>irmovq rrmovq cmovXX OPq (add/sub/and/xor/mul/div/mod) rmmovq mrmovq pushq popq jXX call ret nop halt</code>, labels, and <code>#</code> comments. Use it to <em>check</em> a hand-traced answer, not to replace tracing.</p>
+<div id="sandbox"></div>
+<p class="muted">The simulator follows the timing rules from slides 2.3/2.4 and CS:APP. If your course's grader ever disagrees with it on an edge case, trust the course and tell me so I can fix the model.</p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Read <strong>CS:APP 3e §4.5.4 “Next PC Prediction”</strong>, the <em>Control Hazards</em> part of §4.5.5, and §4.5.9 “Performance Analysis” (which defines CPI the way used here). <a href="https://csapp.cs.cmu.edu/">csapp.cs.cmu.edu</a>. Then your <a href="../2.4-branchPrediction.pdf">slides 2.4</a>. For a look at real hardware: Yavarzadeh et al., <a href="https://ieeexplore.ieee.org/document/10179415/">“Half&amp;Half: Demystifying Intel's Directional Branch Predictors”</a> (cited on the slides).
+</div>
+
+<div class="callout key">
+  <span class="label">Spacing</span>
+  In 2–3 days, come back and do the practice with <em>forwarding = off</em> and <em>prediction = random</em>. Then do 3 of Lesson 1's drills. Mixing old and new topics is deliberate.
+</div>
+
+<p class="ask">Something unclear, or a homework variant that doesn't match the rules here? Ask me in the terminal. I can walk through any problem cycle by cycle.</p>
+
+<nav class="lesson-nav">
+  <a href="0001-value-forwarding.html">← Lesson 1: Value forwarding</a>
+  <a href="../reference/0001-pipeline-hazards-cheatsheet.html">Cheat sheet →</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/drills.js"></script>
+<script>
+  function show(id, src, opts) { Y86.render(document.getElementById(id), Y86.simulate(Y86.parse(src), opts)); }
+  show('dg-ret', 'call f\nirmovq $1, %rax\nhalt\nf:\nret', { rsp: 4096 });
+  show('dg-mis', 'irmovq $1, %rax\nirmovq $1, %rbx\nsubq %rax, %rbx\nje skip\nirmovq $0x5000, %rcx\nirmovq $0x5000, %rdx\nskip:\naddq %rcx, %rbx\nhalt', { predict: 'never' });
+  show('dg-worked', 'irmovq $3, %rbx\nirmovq $5, %rcx\nsubq %rbx, %rcx\njle L1\nmrmovq 0(%rbp), %rsi\naddq %rsi, %rdi\nL1:\nhalt', { predict: 'always' });
+  Drill.lostCycles(document.getElementById('drill'));
+  Drill.sandbox(document.getElementById('sandbox'), '# P9.2-style loop — try each predictor\n    irmovq $0, %rax\n    irmovq $4, %rbx\n    irmovq $1, %rcx\nloop_start:\n    rrmovq %rax, %rdi\n    addq %rcx, %rax\n    subq %rbx, %rdi\n    jge loop_end\n    jmp loop_start\nloop_end:\n    halt');
+</script>
+</body>
+</html>

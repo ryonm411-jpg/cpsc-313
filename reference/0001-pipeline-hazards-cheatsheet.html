@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Hazards Cheat Sheet</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  main { max-width: 52rem; }
+  h2 { margin-top: 1.8rem; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 640px) { .two { grid-template-columns: 1fr; } }
+  dl dt { font-weight: 600; margin-top: .5rem; }
+  dl dd { margin-left: 1rem; }
+</style>
+</head>
+<body>
+<main>
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Reference</div>
+  <h1>Pipeline Hazards Cheat Sheet</h1>
+  <p class="subtitle">y86-64, 5 stages: F · D · E · M · W. Prints on one or two pages.</p>
+</header>
+
+<h2>Timing facts</h2>
+<ul>
+  <li>Consumer needs its operands by the <strong>end of Decode</strong>.</li>
+  <li><strong>valE</strong> (ALU result) first exists at the <strong>end of Execute</strong>. <strong>valM</strong> (loaded value, from <code>mrmovq</code> or <code>popq rA</code>) first exists at the <strong>end of Memory</strong>.</li>
+  <li>A register written in W is readable in Decode the <strong>next</strong> cycle.</li>
+  <li>Condition codes are set in E and read by the next instruction's E. No hazard.</li>
+</ul>
+
+<h2>Data hazards: distance rule</h2>
+<p class="muted">Distance = how many instructions after the producer the consumer comes (back-to-back = 1; nops count).</p>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Distance</th><th>Producer in</th><th>Forward valE from</th><th>Forward valM from</th><th>Stalls w/o forwarding</th></tr>
+  <tr><td>1</td><td>E</td><td><code>e_valE</code> (0 stalls)</td><td>1 stall, then <code>m_valM</code></td><td>3</td></tr>
+  <tr><td>2</td><td>M</td><td><code>M_valE</code></td><td><code>m_valM</code></td><td>2</td></tr>
+  <tr><td>3</td><td>W</td><td><code>W_valE</code></td><td><code>W_valM</code></td><td>1</td></tr>
+  <tr><td>≥ 4</td><td>done</td><td colspan="2">register file</td><td>0</td></tr>
+</table>
+</div>
+<p class="muted">lowercase <code>e_</code>/<code>m_</code> = computed by that stage this cycle · UPPERCASE <code>M_</code>/<code>W_</code> = stored in that pipeline register. There's no <code>m_valE</code> forward (Memory passes valE through unchanged).</p>
+
+<h2>Control hazards</h2>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Instruction</th><th>Next PC known</th><th>Cost</th></tr>
+  <tr><td><code>jmp</code>, <code>call</code></td><td>Fetch (<code>valC</code>)</td><td>0</td></tr>
+  <tr><td><code>jXX</code>, no prediction</td><td>after E (<code>e_Cnd</code>)</td><td>2 stalls, every time</td></tr>
+  <tr><td><code>jXX</code>, predicted right</td><td>guessed in Fetch</td><td>0</td></tr>
+  <tr><td><code>jXX</code>, mispredicted</td><td>discovered after E</td><td>2 squashed instructions</td></tr>
+  <tr><td><code>ret</code></td><td>after M (stack read)</td><td>3 stalls</td></tr>
+  <tr><td><code>cmovXX</code></td><td colspan="2">not a control hazard: a data value (valE)</td></tr>
+</table>
+</div>
+
+<div class="two">
+<div>
+<h2>Predictors</h2>
+<ul>
+  <li><strong>Never taken</strong>: next PC = valP. ≈40% right.</li>
+  <li><strong>Always taken</strong>: next PC = valC. ≈60% right. Keeps valP (as <code>M_valA</code>) for recovery.</li>
+  <li><strong>BTFNT</strong>: backward taken (loops), forward not taken (ifs). ≈65%.</li>
+  <li>Fancier: 1-bit history, per-PC tables. Delay slots on some ISAs.</li>
+</ul>
+</div>
+<div>
+<h2>CPI</h2>
+<p>CPI = (I + lost) / I</p>
+<p class="muted">I = instructions executed incl. <code>halt</code>, excluding squashed ones. lost = stall cycles + squashed instructions. (CS:APP §4.5.9.) Check your course's answer key on whether pipeline fill cycles are included.</p>
+</div>
+</div>
+
+<h2>Counting procedure</h2>
+<ol class="steps">
+  <li>Trace register values and condition codes → actual outcome of each <code>jXX</code>.</li>
+  <li>Walk the executed path only.</li>
+  <li>Data: nearest prior writer of each source register → distance table.</li>
+  <li>Control: <code>jXX</code> 2 (unless predicted right), <code>ret</code> 3.</li>
+  <li>Sum. Watch for overlap: an earlier stall gives later instructions extra time.</li>
+</ol>
+
+<h2>Terms</h2>
+<dl>
+  <dt>Stall</dt><dd>Holding an instruction in its stage (F and D keep their values) while a bubble goes into E.</dd>
+  <dt>Bubble</dt><dd>A nop injected into a stage so nothing useful happens there that cycle.</dd>
+  <dt>Forwarding</dt><dd>Sending a value straight from a later stage back to Decode, skipping the wait for the register file. Also called bypassing.</dd>
+  <dt>Load/use hazard</dt><dd>A loaded value used by the very next instruction. It needs 1 stall even with forwarding.</dd>
+  <dt>Squash</dt><dd>Cancelling wrong-path instructions after a misprediction by turning them into bubbles. Also called quash or cancel.</dd>
+  <dt>Distance</dt><dd>How many instructions separate consumer from producer (back-to-back = 1).</dd>
+</dl>
+
+<p class="muted">Lessons: <a href="../lessons/0001-value-forwarding.html">1 · Value forwarding</a> · <a href="../lessons/0002-control-hazards-branch-prediction.html">2 · Control hazards &amp; branch prediction</a>. Sources: slides 2.3, 2.4; Bryant &amp; O’Hallaron, CS:APP 3e §4.5.</p>
+</main>
+</body>
+</html>
