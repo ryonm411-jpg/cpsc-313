@@ -140,3 +140,18 @@ nav.lesson-nav { display: flex; justify-content: space-between; gap: 1rem; borde
   html { font-size: 16px; }
   h1 { font-size: 1.7rem; }
 }
+
+/* ---------- Version bench (assets/bench.js) & figures ---------- */
+details.bench-card { border: 1px solid var(--rule); border-radius: 4px; padding: .4rem .7rem; margin: .5rem 0; background: var(--panel); }
+details.bench-card[open] { padding-bottom: .7rem; }
+details.bench-card summary { cursor: pointer; }
+details.hint { border-left: 3px solid var(--rule); padding: .2rem .8rem; margin: .8rem 0; }
+details.hint summary { cursor: pointer; font-style: italic; color: var(--muted); }
+figure { margin: 1.4rem 0; }
+figure svg { max-width: 100%; height: auto; display: block; }
+figcaption { font-size: .85rem; color: var(--muted); margin-top: .3rem; }
+.dep-node { fill: var(--panel); stroke: var(--ink); }
+.dep-label { fill: var(--ink); font-family: var(--mono); font-size: 13px; text-anchor: middle; dominant-baseline: central; }
+.dep-edge { stroke: var(--ink); stroke-width: 1.3; fill: none; }
+.dep-edge.war { stroke: var(--accent); stroke-dasharray: 4 3; }
+.dep-arrow { fill: var(--ink); } .dep-arrow.war { fill: var(--accent); }

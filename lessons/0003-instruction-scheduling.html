@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instruction Scheduling</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 3 · Tutorial 4, part 1</div>
+  <h1>Instruction Scheduling</h1>
+  <p class="subtitle">Same instructions, same answer, fewer bubbles. You just change the order.</p>
+</header>
+
+<p><strong>Your win for today:</strong> take a straight-line block of y86, reorder it so it gives the same result with the fewest bubbles, and know when reordering stops mattering. That's the “Shuffling instructions” part of Tutorial 4. It's also the cheapest trick you'll use in Lab 5. About 15 minutes.</p>
+
+<h2>Warm-up: recall from Lessons 1–2</h2>
+
+<div class="quiz" data-answer="2">
+  <p class="q">With <em>no</em> forwarding, how many stall cycles does <code>subq</code> wait?</p>
+  <pre><code>addq %rax, %rbx
+nop
+subq %rbx, %rcx</code></pre>
+  <ol class="opts"><li>0 stalls</li><li>1 stall</li><li>2 stalls</li><li>3 stalls</li></ol>
+  <div class="why"><p>Distance 2 → 2 stalls. Without forwarding, the consumer's Decode has to happen <em>after</em> the producer's Write-back, so distance 1/2/3 cost 3/2/1 stalls. Distance 4 or more costs 0. <a href="0001-value-forwarding.html">Lesson 1</a>.</p></div>
+</div>
+
+<h2>1 · Count first</h2>
+
+<p>The program from the tutorial. The letters are just names. Each line is a single instruction.</p>
+<pre><code>A. irmovq 0x123, %rax
+B. irmovq 0x456, %rbx
+C. addq   %rax, %rbx
+D. irmovq 0x789, %rsi
+E. irmovq 0xABC, %rdi
+F. addq   %rsi, %rdi
+G. modq   %rsi, %rax
+H. divq   %rbx, %rdi</code></pre>
+
+<div class="quiz numeric" data-answer="0">
+  <p class="q">Q1. On the <em>unpipelined</em> (sequential, SEQ) y86 processor, how many bubbles does it produce?</p>
+  <div class="why"><p><strong>0.</strong> SEQ runs each instruction through all five stages before starting the next one. By the time C starts, A and B are completely done. Nothing overlaps, so there's nothing to wait for. You pay for this with a long clock cycle instead <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.3–4.4</a>.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="8">
+  <p class="q">Q2. Pipelined, <em>no forwarding</em>. How many bubbles in the original order?</p>
+  <div class="why"><p><strong>8 = 3 + 3 + 2.</strong> C needs <code>%rbx</code> from B at distance 1 → 3. F needs <code>%rdi</code> from E at distance 1 → 3. H needs <code>%rdi</code> from F at distance 2 (G sits between) → 2. G is free: <code>%rsi</code> (D) and <code>%rax</code> (A) are both far enough back, especially since F's stall gave them extra time. Every other dependency is already 4 or more apart.</p></div>
+</div>
+
+<h2>2 · What makes a reorder legal?</h2>
+
+<p>You may move an instruction past another unless the two touch the same register in a way where order matters <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.5</a>:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Pair</th><th>Rule</th><th>Example here</th></tr>
+  <tr><td><strong>write → read</strong></td><td>a reader stays after the writer it needs. This is the real <em>data dependency</em>, the one that causes hazards.</td><td>A, B → C</td></tr>
+  <tr><td><strong>read → write</strong></td><td>a writer stays after earlier readers of the old value, or they'd see the new one</td><td>C reads <code>%rax</code>, then G overwrites it → G after C</td></tr>
+  <tr><td><strong>write → write</strong></td><td>the last writer stays last, so the final value is right</td><td>(none here)</td></tr>
+</table>
+</div>
+
+<p class="muted">Condition codes act like one more register. Every <code>OPq</code> writes them, and <code>jXX</code>/<code>cmovXX</code> read them. Here H sets the final condition codes. If H is no longer last, the registers still match but the codes don't. That only matters if a later jump or <code>cmov</code> reads them.</p>
+
+<figure>
+<svg viewBox="0 0 440 230" role="img" aria-label="Dependency graph of instructions A through H">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="dep-arrow" d="M0,0L10,5L0,10z"/></marker><marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="dep-arrow war" d="M0,0L10,5L0,10z"/></marker></defs>
+<line class="dep-edge" x1="58.6" y1="44.7" x2="90.4" y2="98.6" marker-end="url(#ar)"/>
+<line class="dep-edge" x1="141.4" y1="44.7" x2="109.6" y2="98.6" marker-end="url(#ar)"/>
+<line class="dep-edge" x1="298.6" y1="44.7" x2="330.4" y2="98.6" marker-end="url(#ar)"/>
+<line class="dep-edge" x1="381.4" y1="44.7" x2="349.6" y2="98.6" marker-end="url(#ar)"/>
+<line class="dep-edge" x1="65.2" y1="37.6" x2="203.0" y2="106.5" marker-end="url(#ar)"/>
+<line class="dep-edge" x1="279.2" y1="43.1" x2="232.1" y2="100.3" marker-end="url(#ar)"/>
+<line class="dep-edge war" x1="117.0" y1="115.0" x2="201.0" y2="115.0" marker-end="url(#arw)"/>
+<line class="dep-edge" x1="113.9" y1="124.8" x2="204.5" y2="189.0" marker-end="url(#ar)"/>
+<line class="dep-edge" x1="326.1" y1="124.8" x2="235.5" y2="189.0" marker-end="url(#ar)"/>
+<circle class="dep-node" cx="50" cy="30" r="16"/><text class="dep-label" x="50" y="30">A</text>
+<circle class="dep-node" cx="150" cy="30" r="16"/><text class="dep-label" x="150" y="30">B</text>
+<circle class="dep-node" cx="290" cy="30" r="16"/><text class="dep-label" x="290" y="30">D</text>
+<circle class="dep-node" cx="390" cy="30" r="16"/><text class="dep-label" x="390" y="30">E</text>
+<circle class="dep-node" cx="100" cy="115" r="16"/><text class="dep-label" x="100" y="115">C</text>
+<circle class="dep-node" cx="220" cy="115" r="16"/><text class="dep-label" x="220" y="115">G</text>
+<circle class="dep-node" cx="340" cy="115" r="16"/><text class="dep-label" x="340" y="115">F</text>
+<circle class="dep-node" cx="220" cy="200" r="16"/><text class="dep-label" x="220" y="200">H</text>
+</svg>
+<figcaption>The dependencies. Black arrows: write → read (data). Red dashed: read → write (C must read the old <code>%rax</code> before G overwrites it). Any order that respects every arrow gives the same registers.</figcaption>
+</figure>
+
+<div class="quiz" data-answer="3,4" data-multi>
+  <p class="q">Which instructions must come <em>after</em> C? (select all)</p>
+  <ol class="opts"><li>A</li><li>B</li><li>F</li><li>G</li><li>H</li></ol>
+  <div class="why"><p><strong>G</strong> (it overwrites the <code>%rax</code> that C reads) and <strong>H</strong> (it reads the <code>%rbx</code> that C writes). F belongs to the other chain, so it can go anywhere relative to C. That freedom is what you use to fill gaps.</p></div>
+</div>
+
+<h2>3 · The scheduling idea</h2>
+
+<p>Without forwarding, a reader is free once there are at least <strong>4 instruction slots</strong> (cycles, really) between it and its writer. So <strong>start the writers early, and fill the gaps with independent work</strong>. Two independent chains are perfect for this. While one chain waits on its writer, the other chain gets work done.</p>
+
+<p>Try it. Type an order (like <code>BACDEFGH</code>) and press Run. The widget checks that your result still matches the original and draws the pipeline. Find the fewest bubbles you can <em>before</em> peeking at the minimum.</p>
+
+<div id="reorder"></div>
+
+<div class="quiz numeric" data-answer="4">
+  <p class="q">Q3. What's the fewest bubbles a legal order can produce (no forwarding)?</p>
+  <div class="why"><p><strong>4.</strong> For example, <code>ABDECFGH</code>: all four <code>irmovq</code>s go first. C is 1 short of the 4-slot gap from B (1 bubble). F rides on that delay but is still 1 short (1 bubble). H follows F at distance 2 (2 bubbles). 26 different legal orders all tie at 4. You can't get to 0 because the chain <em>irmovq → add → div</em> needs two 4-slot gaps, and with only eight instructions there isn't enough independent work to fill both.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="0">
+  <p class="q">Q4. Your best order, now <em>with</em> forwarding. How many bubbles?</p>
+  <div class="why"><p><strong>0.</strong> And the <em>original</em> order also gets 0. With forwarding, every ALU result (<code>irmovq</code>, <code>addq</code>, <code>modq</code>, <code>divq</code>) reaches the next instruction through <code>e_valE</code> with no wait. Only a <strong>load/use</strong> (a value from <code>mrmovq</code> or <code>popq</code>, used by the very next instruction) still costs a bubble. This program has no loads, so there's nothing left to schedule. Tick “forwarding” above to see it.</p></div>
+</div>
+
+<div class="callout key">
+  <span class="label">What this means for Lab 5</span>
+  The pipeline you'll optimize has forwarding. So scheduling comes down to one rule: <strong>never use a loaded value in the very next instruction</strong>. Put any independent instruction between them (a pointer increment, a constant, the other half of a swap). Each such slot you fill saves 1 cycle every time that code runs, and in a sort's inner loop that adds up.
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q">With forwarding, which pair costs a bubble?</p>
+  <ol class="opts">
+    <li><code>addq %r8, %r9</code> then <code>subq %r9, %r10</code></li>
+    <li><code>popq %r9</code> then <code>subq %r9, %r10</code></li>
+    <li><code>irmovq $8, %r9</code> then <code>subq %r9, %r10</code></li>
+    <li><code>rrmovq %r8, %r9</code> then <code>subq %r9, %r10</code></li>
+  </ol>
+  <div class="why"><p><code>popq</code> gets <code>%r9</code> from memory (valM, end of Memory). That's a load/use, so 1 bubble, then <code>m_valM</code>. The other three produce valE, which is forwarded from <code>e_valE</code> for free.</p></div>
+</div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <strong>CS:APP 3e §4.5.5</strong>, the parts “Avoiding Data Hazards by Stalling”, “…by Forwarding”, and “Load/Use Data Hazards” <a href="https://csapp.cs.cmu.edu/">csapp.cs.cmu.edu</a>. Your <a href="../2.3-valueForwarding%20(2).pdf">slides 2.3</a> are the authority on course conventions.
+</div>
+
+<p class="ask">Want to check an order you found, or wondering why one particular order is illegal? Ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0002-control-hazards-branch-prediction.html">← Lesson 2: Branch prediction</a>
+  <a href="0004-c-to-fast-y86.html">Lesson 4: From C to fast y86 →</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/reorder.js"></script>
+<script>
+  Reorder.mount(document.getElementById('reorder'), {
+    instrs: {
+      A: 'irmovq 0x123, %rax', B: 'irmovq 0x456, %rbx', C: 'addq %rax, %rbx', D: 'irmovq 0x789, %rsi',
+      E: 'irmovq 0xABC, %rdi', F: 'addq %rsi, %rdi', G: 'modq %rsi, %rax', H: 'divq %rbx, %rdi'
+    },
+    regs: ['rax', 'rbx', 'rsi', 'rdi'],
+    forwarding: false
+  });
+</script>
+</body>
+</html>

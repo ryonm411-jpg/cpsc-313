@@ -9,6 +9,9 @@
  *   - jXX: outcome known after Execute; correct fetch happens when jXX is in Memory
  *          -> 2 lost cycles (stalls with no prediction, squashed instrs on a mispredict).
  *
+ * Data: `.quad v` (with labels) is placed at 0x8000+; `irmovq label, rB` loads a label's value.
+ *       Instructions are addressed by index, so .pos/.align are ignored.
+ *
  * API: Y86.parse(src) · Y86.simulate(prog, {forwarding, predict}) · Y86.render(el, result)
  *      Y86.randomProgram(kind, rng)
  */
@@ -21,6 +24,7 @@
   var JXX = { jmp: 1, jle: 1, jl: 1, je: 1, jne: 1, jge: 1, jg: 1 };
   var CMOV = { rrmovq: 1, cmovle: 1, cmovl: 1, cmove: 1, cmovne: 1, cmovge: 1, cmovg: 1 };
   var MASK = (1n << 64n) - 1n;
+  var DATA_BASE = 0x8000n;   // .quad words live here; if a program has data, %rsp starts at 0x10000
 
   function toSigned(x) { x &= MASK; return x >= (1n << 63n) ? x - (1n << 64n) : x; }
 
@@ -46,7 +50,7 @@
   }
 
   function parse(src) {
-    var instrs = [], labels = {}, pending = [];
+    var instrs = [], labels = {}, pending = [], data = [];
     src.split(/\r?\n/).forEach(function (raw) {
       var line = raw.replace(/#.*$/, '').trim();
       // peel off any number of "label:" prefixes
@@ -55,7 +59,17 @@
         pending.push(m[1]);
         line = line.slice(m[0].length);
       }
-      if (!line || line[0] === '.') return;
+      if (!line) return;
+      // ".quad v" lays down a data word in a separate data region; its labels name that address.
+      var q = line.match(/^\.quad\s+(\S+)/);
+      if (q) {
+        var addr = DATA_BASE + BigInt(data.length * 8);
+        data.push({ addr: addr, value: q[1] });
+        pending.forEach(function (l) { labels[l] = addr; });
+        pending = [];
+        return;
+      }
+      if (line[0] === '.') return;   // .pos / .align: ignored (instructions are addressed by index)
       var sp = line.search(/\s/);
       var op = (sp < 0 ? line : line.slice(0, sp)).toLowerCase();
       var args = sp < 0 ? [] : splitArgs(line.slice(sp + 1));
@@ -63,7 +77,9 @@
       if (op === 'halt' || op === 'nop' || op === 'ret') {
         // no operands
       } else if (op === 'irmovq') {
-        ins.imm = parseImm(args[0]); ins.rB = reg(args[1]);
+        ins.rB = reg(args[1]);
+        if (/^\$?-?(0x[0-9a-f]+|\d+)$/i.test(args[0].trim())) ins.imm = parseImm(args[0]);
+        else ins.immLabel = args[0].trim().replace(/^\$/, '');
       } else if (CMOV[op]) {
         ins.rA = reg(args[0]); ins.rB = reg(args[1]);
       } else if (OPS[op]) {
@@ -85,13 +101,21 @@
     });
     // trailing labels point past the end (an implicit halt lives there)
     pending.forEach(function (l) { labels[l] = instrs.length; });
+    function resolve(name) {
+      if (!(name in labels)) throw new Error('Unknown label: ' + name);
+      return labels[name];
+    }
+    data.forEach(function (d) {
+      d.value = /^-?(0x[0-9a-f]+|\d+)$/i.test(d.value) ? parseImm(d.value) : BigInt(resolve(d.value));
+    });
     instrs.forEach(function (ins) {
+      if (ins.immLabel !== undefined) ins.imm = BigInt(resolve(ins.immLabel));
       if (ins.target !== undefined) {
         if (!(ins.target in labels)) throw new Error('Unknown label: ' + ins.target);
         ins.targetIdx = labels[ins.target];
       }
     });
-    return { instrs: instrs, labels: labels };
+    return { instrs: instrs, labels: labels, data: data };
   }
 
   function splitArgs(s) {
@@ -143,7 +167,9 @@
     var instrs = prog.instrs;
     var R = {}; REGS.forEach(function (r) { R[r] = 0n; });
     if (opts.rsp !== undefined) R.rsp = BigInt(opts.rsp);
+    if (opts.rsp === undefined && prog.data && prog.data.length) R.rsp = 0x10000n;
     var mem = new Map();
+    (prog.data || []).forEach(function (d) { mem.set(d.addr, d.value); });
     var cc = { ZF: true, SF: false, OF: false };
     var lastWriter = {};          // reg -> {E, kind:'E'|'M', text}
     var rows = [], events = [], notes = [];

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>y86 Optimization Playbook</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>
+  main { max-width: 52rem; }
+  h2 { margin-top: 1.8rem; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .two pre { margin: .3rem 0; font-size: .8rem; }
+  .two h4 { margin: .2rem 0; font-size: .85rem; font-variant: small-caps; letter-spacing: .05em; color: var(--muted); font-weight: 400; }
+  @media (max-width: 640px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Reference · for Lab 5</div>
+  <h1>y86 Optimization Playbook</h1>
+  <p class="subtitle">Pipeline with forwarding + branch prediction. Numbers are from the course timing model (<a href="0001-pipeline-hazards-cheatsheet.html">hazards cheat sheet</a>).</p>
+</header>
+
+<h2>The equation</h2>
+<p style="text-align:center"><em>cycles</em> ≈ <em>instructions executed</em> + <em>bubbles</em> (+ 4 to fill the pipeline) · CPI = (<em>instr</em> + <em>bubbles</em>) / <em>instr</em></p>
+<p>Two independent levers: <strong>fewer bubbles</strong> and <strong>fewer instructions</strong>. Always compare <strong>cycles</strong>. Cutting a stall-free instruction raises CPI but still saves time. Spend effort where code runs most (inner loops), because a cycle saved there is saved <em>n</em> times.</p>
+
+<h2>What still costs cycles (forwarding + BTFNT)</h2>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Cause</th><th>Cost</th><th>Fix</th></tr>
+  <tr><td>load/use: <code>mrmovq</code>/<code>popq</code> value used by the <em>next</em> instruction</td><td>1</td><td>put any independent instruction between (§1)</td></tr>
+  <tr><td><code>ret</code></td><td>3</td><td>fewer calls: loops instead of recursion, inline small helpers (§4)</td></tr>
+  <tr><td>mispredicted <code>jXX</code></td><td>2</td><td>shape branches to match the predictor (§5)</td></tr>
+  <tr><td>ALU → ALU, <code>irmovq</code>, <code>call</code>, <code>jmp</code>, correct predictions</td><td>0</td><td>(only the instruction count matters)</td></tr>
+</table>
+</div>
+
+<h2>Legal reordering</h2>
+<p>An instruction may move past another unless they share a register as <strong>write→read</strong> (data dependency), <strong>read→write</strong> (overwriting a value that's still needed), or <strong>write→write</strong> (final value). Condition codes count as a register: every <code>OPq</code> writes them, and <code>jXX</code>/<code>cmovXX</code> read them. Don't slide an <code>OPq</code> between a flag-setter and its jump. <a href="../lessons/0003-instruction-scheduling.html">Lesson 3</a>.</p>
+
+<h2>The tricks</h2>
+
+<h3>1 · Fill the load/use slot</h3>
+<div class="two">
+  <div><h4>before · 1 bubble</h4><pre><code>mrmovq (%rdi), %r9
+addq   %r9, %rax
+addq   %r8, %rdi</code></pre></div>
+  <div><h4>after · 0</h4><pre><code>mrmovq (%rdi), %r9
+addq   %r8, %rdi
+addq   %r9, %rax</code></pre></div>
+</div>
+<p class="muted">If the filler would overwrite the register you're loading into, load into a different register.</p>
+
+<h3>2 · Let the arithmetic set the flags</h3>
+<div class="two">
+  <div><h4>before · 3 instr</h4><pre><code>andq %rsi, %rsi
+je   base
+…
+subq %r8, %rsi     # n-1</code></pre></div>
+  <div><h4>after · 2 instr</h4><pre><code>subq %r8, %rsi     # n-1, sets CC
+jl   base          # n-1 &lt; 0  ⇔  n == 0
+…</code></pre></div>
+</div>
+
+<h3>3 · Count down, test at the bottom</h3>
+<p>Instead of computing <code>p − end</code> every iteration, keep a counter that <code>subq</code> decrements, and end the loop with a backward <code>jg loop</code>. That's one test per iteration, and it's predicted taken. Guard against <code>n ≤ 0</code> once, before the loop.</p>
+<pre><code>  andq %rsi, %rsi
+  jle  done
+loop:
+  mrmovq (%rdi), %r10
+  addq   %r8, %rdi        # %r8 = 8, hoisted out of the loop
+  addq   %r10, %rax
+  subq   %r9, %rsi        # %r9 = 1, hoisted
+  jg     loop
+done:</code></pre>
+
+<h3>4 · Recursion → loop</h3>
+<p>Each recursive call costs <code>call</code> + <code>ret</code> (3 bubbles) + push/pop (often a load/use). If the recursion can be made tail-recursive (carry an accumulator, nothing left to do after the call), the call becomes a jump. For <code>sum</code>, n = 10: 187 → 69 cycles. <a href="../lessons/0004-c-to-fast-y86.html">Lesson 4</a>.</p>
+
+<h3>5 · Shape branches for the predictor</h3>
+<p>Under BTFNT, <strong>backward = taken, forward = not taken</strong>. Put loop branches at the bottom (backward). Make forward branches jump to the <em>rare</em> case (an early exit, a base case, “already in order”). The common path then falls through and costs 0.</p>
+
+<h3>6 · Hoist constants and loads</h3>
+<p>Any <code>irmovq</code> of a constant, or a load of a value that doesn't change, belongs before the loop, in a register the loop doesn't otherwise use.</p>
+
+<h3>7 · Unroll</h3>
+<p>Process 2 (or more) elements per iteration. That pays for the counter update and branch once per 2 elements, and the second load naturally fills the first one's load/use slot. You need cleanup code for odd <code>n</code>. For <code>sum</code>, n = 10: 69 → 58 cycles. <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §5.8</a></p>
+<pre><code>loop:
+  mrmovq (%rdi), %r10
+  mrmovq 8(%rdi), %r11
+  addq   %r8, %rdi        # %r8 = 16
+  addq   %r10, %rax
+  addq   %r11, %rax
+  subq   %r9, %rsi        # %r9 = 2
+  jge    loop</code></pre>
+
+<h2>Workflow (from the Lab 5 tips)</h2>
+<ol class="steps">
+  <li><strong>Measure</strong> the baseline: instructions, bubbles by cause, cycles.</li>
+  <li><strong>Find the hot path</strong>: the inner loop of the sort runs far more than anything else.</li>
+  <li><strong>Change one thing.</strong> Keep the old version (bench: <em>Duplicate</em>; or a git commit).</li>
+  <li><strong>Check correctness</strong>: it still sorts, including edge cases (n = 0, 1, already sorted, reversed, duplicates). Callee-saved registers are restored. In the x86-64 convention these are <code>%rbx %rbp %r12–%r14</code> (<a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §3.7.5</a>; confirm against the Lab 5 handout).</li>
+  <li><strong>Record</strong> the cycle count and why it changed. Then repeat.</li>
+</ol>
+
+</main>
+</body>
+</html>

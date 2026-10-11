@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From C to Fast y86</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 4 · Tutorial 4, part 2</div>
+  <h1>From C to Fast y86</h1>
+  <p class="subtitle">Measure, find the bubbles, change one thing, measure again. That's the whole of Lab 5 in miniature.</p>
+</header>
+
+<p><strong>Your win for today:</strong> take one function, <code>sum</code>, from a recursive y86 version to a loop that's about <strong>2.7× faster</strong>, and be able to say exactly where each saved cycle came from. About 30 minutes. Everything runs in the bench below, which keeps your versions in this browser.</p>
+
+<h2>Warm-up: recall from Lessons 1–3</h2>
+
+<div class="quiz" data-answer="1">
+  <p class="q">With forwarding and BTFNT prediction, what does each of these cost? <code>ret</code> · a forward <code>je</code> that is <em>taken</em> · <code>call</code></p>
+  <ol class="opts"><li>3 · 0 · 3</li><li>3 · 2 · 0</li><li>2 · 2 · 0</li><li>3 · 0 · 0</li></ol>
+  <div class="why"><p><code>ret</code>: 3, because the return address comes from memory. A forward jump is predicted <em>not</em> taken, so when it is taken, 2 instructions get squashed. <code>call</code>: 0, because the target is a constant in the instruction. <a href="0002-control-hazards-branch-prediction.html">Lesson 2</a>.</p></div>
+</div>
+
+<h2>1 · The only equation you need</h2>
+
+<p>On the pipeline, each instruction costs one cycle, and each bubble costs one more <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.9</a>:</p>
+<p style="text-align:center;font-size:1.1rem"><em>cycles</em> ≈ <em>instructions</em> + <em>bubbles</em> = <em>instructions</em> × CPI</p>
+<p>So there are two levers: <strong>(a) fewer bubbles</strong> (lower CPI) and <strong>(b) fewer instructions</strong>. They are independent. Removing a cheap, never-stalling instruction <em>raises</em> CPI, because the bubbles that remain are spread over fewer instructions, but the program still gets faster.</p>
+
+<div class="quiz" data-answer="0">
+  <p class="q">Version X: 119 instructions, CPI 1.38. Version Y: 128 instructions, CPI 1.35. Which one finishes first?</p>
+  <ol class="opts"><li>X, by about 9 cycles</li><li>Y, by about 9 cycles</li><li>Y, by about 3 cycles</li><li>they tie, more or less</li></ol>
+  <div class="why"><p>X ≈ 119 × 1.38 ≈ 164, Y ≈ 128 × 1.35 ≈ 173. X wins despite the worse CPI. <strong>Judge by cycles, never by CPI alone.</strong> (These are real numbers from later in this lesson.)</p></div>
+</div>
+
+<h2>2 · Find the bubbles in the recursive version</h2>
+
+<pre><code>long sum(long *a, long n) {
+    return n == 0 ? 0 : *a + sum(a+1, n-1);
+}</code></pre>
+<pre><code>sum:
+  andq   %rsi, %rsi
+  je     base             # goto base if n == 0
+  mrmovq (%rdi), %r8
+  pushq  %r8              # save *a on stack
+  irmovq $8, %r8
+  addq   %r8, %rdi
+  irmovq $1, %r8
+  subq   %r8, %rsi
+  call   sum              # rax = sum(a+1, n-1)
+  popq   %r8
+  addq   %r8, %rax        # rax = *a + sum(a+1, n-1)
+  ret
+base:
+  irmovq $0, %rax
+  ret</code></pre>
+
+<p>Trace it by hand first, with <strong>forwarding + BTFNT</strong>. Go one line at a time and ask: <em>is this a load used next? A jump that's mispredicted? A <code>ret</code>?</em></p>
+
+<div class="quiz" data-answer="1,3,4" data-multi>
+  <p class="q">In a call with <code>n &gt; 0</code>, which instructions cause bubbles? (select all)</p>
+  <ol class="opts">
+    <li><code>je base</code></li><li><code>pushq %r8</code></li><li><code>call sum</code></li><li><code>addq %r8, %rax</code></li><li><code>ret</code></li><li><code>subq %r8, %rsi</code></li>
+  </ol>
+  <div class="why">
+    <p><strong><code>pushq %r8</code></strong>: load/use. It needs the <code>%r8</code> that <code>mrmovq</code> is still loading → 1 bubble.<br>
+    <strong><code>addq %r8, %rax</code></strong>: load/use. <code>popq %r8</code> gets its value from memory (valM) → 1 bubble.<br>
+    <strong><code>ret</code></strong>: 3 bubbles, every single call.<br>
+    <code>je base</code> is a forward jump, predicted not taken. That's right in every call with <code>n &gt; 0</code>, and wrong only once, in the base case (2 squashed). <code>call</code> is free. <code>subq</code> gets <code>%r8</code> from <code>e_valE</code>.</p>
+    <p>So each call with <code>n &gt; 0</code> costs 1 + 1 + 3 = <strong>5</strong> bubbles. The base case costs 2 + 3 = <strong>5</strong> as well.</p>
+  </div>
+</div>
+
+<div class="quiz numeric" data-answer="55">
+  <p class="q">For <code>n = 10</code> (10 calls with <code>n &gt; 0</code>, plus the base case), how many bubbles in total?</p>
+  <div class="why"><p><strong>55</strong> = 10 × 5 + 5. That's 20 data bubbles + 33 from the 11 <code>ret</code>s + 2 squashed. The bench below shows the same numbers (with a tiny 4-instruction <code>main</code> that adds no bubbles). The <code>recr-start.s</code> in your repo has its own <code>main</code>, so its totals may be off by a few. The per-call costs are the same.</p></div>
+</div>
+
+<h3>Now fix it yourself</h3>
+<p>Open the bench, press <em>Duplicate as new version</em> on “recursive (given)”, and make <strong>small, local</strong> edits. Keep the stack and the recursion. Check that the ✓ stays green after every change. Try the hints one at a time, only when you're stuck.</p>
+
+<details class="hint"><summary>Hint 1: the first load/use</summary>
+<p>The <code>mrmovq</code>→<code>pushq</code> stall needs one independent instruction in between. <code>irmovq $8, …</code> is independent, but it clobbers <code>%r8</code>… so load into a <em>different</em> register.</p></details>
+<details class="hint"><summary>Hint 2: an instruction you don't need</summary>
+<p><code>subq</code> sets the condition codes too. If you decrement <code>n</code> <em>first</em>, is <code>n − 1 &lt; 0</code> the same test as <code>n == 0</code> (for <code>n ≥ 0</code>)? Then <code>andq</code> is redundant.</p></details>
+<details class="hint"><summary>Hint 3: what you can't fix locally</summary>
+<p>The <code>popq</code>→<code>addq</code> stall has nothing independent to put between them, and every <code>ret</code> costs 3. No small edit removes those. Remember this. It's the argument for part 3.</p></details>
+
+<h2>3 · Recursion → loop</h2>
+
+<pre><code>long sum(long *a, long n) {
+  int s = 0;
+  for (long *p = a; p &lt; a + n; p++)
+    s += *p;
+  return s;
+}</code></pre>
+
+<p><strong>The relationship:</strong> both compute <code>a[0] + a[1] + … + a[n−1]</code>. The recursion adds from the right: <code>a[0] + (a[1] + (… + 0))</code>. Each <code>+</code> waits for the call below it to return, so every element needs its own stack frame. The loop adds from the left, into one running total. Since <code>+</code> is associative, the answers are the same. The bridge between them is <em>tail recursion</em>: rewrite the recursion as <code>sum(a+1, n-1, s + *a)</code>, so nothing is left to do after the call, and the call becomes a jump back to the top. That's a loop. <span class="muted">(Small C quirk: <code>int s</code> is 32 bits. y86 only has 64-bit arithmetic, so a direct translation keeps <code>s</code> as 64 bits.)</span></p>
+
+<div class="quiz" data-answer="0,1,3" data-multi>
+  <p class="q">Why should a direct translation of the loop beat the recursion on the pipeline? (select all)</p>
+  <ol class="opts">
+    <li>no <code>ret</code> per element</li>
+    <li>no push/pop per element</li>
+    <li>it forwards values better</li>
+    <li>its branch is well predicted</li>
+  </ol>
+  <div class="why"><p>Per element, the recursion spends ~12 instructions and 5 bubbles (3 of them on <code>ret</code>). A loop needs ~6 instructions: no <code>call</code>/<code>ret</code>/<code>push</code>/<code>pop</code>. Its backward loop branch is predicted taken and is wrong only on the final exit. Forwarding works the same in both. The loop just gives it fewer hazards to deal with.</p></div>
+</div>
+
+<h3>Write it</h3>
+<p>In the bench, add a version and write the loop yourself. Arguments: <code>%rdi</code> = <code>a</code>, <code>%rsi</code> = <code>n</code>. Return the result in <code>%rax</code>. The label must be <code>sum:</code>. Only if you're stuck, open the direct translation below (your repo's <code>loop-start.s</code> is another one).</p>
+
+<details class="hint"><summary>One direct translation (try first!)</summary>
+<pre><code>sum:
+  irmovq $0, %rax        # s = 0
+  irmovq $8, %r8
+  rrmovq %rsi, %rdx
+  mulq   %r8, %rdx       # 8n
+  addq   %rdi, %rdx      # end = a + n  (pointer arithmetic: bytes)
+  jmp    test
+loop:
+  mrmovq (%rdi), %r9
+  addq   %r9, %rax       # s += *p
+  addq   %r8, %rdi       # p++
+test:
+  rrmovq %rdi, %r10
+  subq   %rdx, %r10      # p - end
+  jl     loop            # while p &lt; end  (backward → predicted taken)
+  ret</code></pre></details>
+
+<p>Measure it, then answer the last part of the tutorial: <strong>where are the unnecessary stalls?</strong> Press <em>stalls</em> on its row.</p>
+
+<div class="quiz numeric" data-answer="10">
+  <p class="q">For the direct translation above (n = 10), how many bubbles are <em>data</em> stalls that a reorder could remove?</p>
+  <div class="why"><p><strong>10.</strong> <code>mrmovq (%rdi), %r9</code> → <code>addq %r9, %rax</code> is a load/use, and it happens on every iteration. Move <code>addq %r8, %rdi</code> between them and all 10 disappear. The other 5 bubbles (one mispredicted exit + one <code>ret</code>) are as low as they go.</p></div>
+</div>
+
+<p class="muted">Then go further, now pulling the <em>instruction-count</em> lever. Can the loop test become free? Count <code>n</code> down with <code>subq</code> and branch on the flags it sets, instead of computing <code>p − end</code> every iteration. That's Hint 2 again, in loop form.</p>
+
+<h2>4 · The bench</h2>
+<div id="bench"></div>
+
+<h2>5 · Compare</h2>
+<p>Fill in your own rows first. Then open the reference results (all with forwarding + BTFNT, n = 10, all returning 55):</p>
+
+<details class="hint"><summary>Reference results</summary>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>version</th><th>instr.</th><th>bubbles</th><th>CPI</th><th>cycles</th><th>vs given</th></tr>
+  <tr><td>recursive, given</td><td>128</td><td>55</td><td>1.43</td><td>187</td><td>1.00×</td></tr>
+  <tr><td>recursive, load moved (Hint 1)</td><td>128</td><td>45</td><td>1.35</td><td>177</td><td>1.06×</td></tr>
+  <tr><td>recursive, + no <code>andq</code> (Hint 2)</td><td>119</td><td>45</td><td>1.38</td><td>168</td><td>1.11×</td></tr>
+  <tr><td>loop, direct translation</td><td>74</td><td>15</td><td>1.20</td><td>93</td><td>2.01×</td></tr>
+  <tr><td>loop, load/use removed</td><td>74</td><td>5</td><td>1.07</td><td>83</td><td>2.25×</td></tr>
+  <tr><td>loop, count <code>n</code> down</td><td>60</td><td>5</td><td>1.08</td><td>69</td><td><strong>2.71×</strong></td></tr>
+</table>
+</div>
+<p>Look at the CPI column twice: lower CPI ≠ faster (rows 2→3 and 5→6). And note where the big win came from. Local fixes to the recursion got 11%. Changing the <em>shape</em> of the code got 2×. Expect the same in Lab 5: algorithm and structure first, polishing stalls second.</p>
+<p>The “count down” loop (5 instructions per element):</p>
+<pre><code>sum:
+  irmovq $0, %rax
+  irmovq $8, %r8
+  irmovq $1, %r9
+  andq   %rsi, %rsi
+  jle    done            # n &lt;= 0: nothing to add
+loop:
+  mrmovq (%rdi), %r10
+  addq   %r8, %rdi       # fills the load/use slot
+  addq   %r10, %rax
+  subq   %r9, %rsi       # n--, and sets the flags for jg
+  jg     loop
+done:
+  ret</code></pre>
+</details>
+
+<div class="callout key">
+  <span class="label">Carry this into Lab 5</span>
+  Use the bench the way the lab tips suggest. Duplicate before every change, change <strong>one thing</strong>, check ✓ is still green, write the cycle count down. The <a href="../reference/0002-y86-optimization-playbook.html">optimization playbook</a> lists every trick from this lesson, plus loop unrolling and callee-saved register rules.
+</div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <strong>CS:APP 3e §4.5.9</strong> (CPI and pipeline performance) and <strong>Chapter 5, “Optimizing Program Performance”</strong>, especially §5.8 on loop unrolling, the next lever after this lesson <a href="https://csapp.cs.cmu.edu/">csapp.cs.cmu.edu</a>. For how recursion maps to a stack frame, §3.7.
+</div>
+
+<div class="callout">
+  <span class="label">Spacing</span>
+  In 2–3 days, without looking: write the count-down loop from memory into a fresh bench version and get it to 69 cycles. Then do 3 problems from <a href="0002-control-hazards-branch-prediction.html#drill">Lesson 2's drill</a>.
+</div>
+
+<p class="ask">Stuck on a version that won't go green, or curious whether your trick would help Lab 5's heapsort? Paste it to me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0003-instruction-scheduling.html">← Lesson 3: Instruction scheduling</a>
+  <a href="../reference/0002-y86-optimization-playbook.html">Optimization playbook →</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/bench.js"></script>
+<script>
+  var DRIVER_HEAD = 'main:\n  irmovq array, %rdi\n  irmovq $10, %rsi\n  call sum\n  halt\n\n';
+  var DRIVER_DATA = '\n\narray:\n' + [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (x) { return '  .quad ' + x; }).join('\n');
+  Bench.mount(document.getElementById('bench'), {
+    driver: function (src) { return DRIVER_HEAD + src + DRIVER_DATA; },
+    check: function (res) { return res.regs.rax === 55n; },
+    checkLabel: 'sum = 55?',
+    storageKey: 'cpsc313-bench-sum',
+    versions: [{ name: 'recursive (given)', src:
+      'sum:                      # long sum(long *a, long n)\n' +
+      '  andq %rsi, %rsi\n  je base                 # goto base if n == 0\n\n' +
+      '  mrmovq (%rdi), %r8\n  pushq %r8               # save *a on stack\n\n' +
+      '  irmovq $8, %r8\n  addq %r8, %rdi\n  irmovq $1, %r8\n  subq %r8, %rsi\n' +
+      '  call sum                # rax = sum(a+1, n-1)\n\n' +
+      '  popq %r8\n  addq %r8, %rax          # rax = *a + sum(a+1, n-1)\n  ret\n\n' +
+      'base:\n  irmovq $0, %rax         # rax = 0\n  ret' }]
+  });
+</script>
+</body>
+</html>
