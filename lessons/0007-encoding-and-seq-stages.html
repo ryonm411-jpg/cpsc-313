@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Encoding &amp; SEQ Stages</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 1 → Quiz 2 · Lesson 7 · I3, I5, I6</div>
+  <h1>Bytes, Stages &amp; New Instructions</h1>
+  <p class="subtitle">Turn any y86 line into bytes and back. Then write what each of the six SEQ stages does for any instruction, including one you've never seen, or say exactly why the hardware can't run it.</p>
+</header>
+
+<p><strong>Your win for today:</strong> these are the first six Quiz 2 learning goals. They draw on the <strong>y86 Reference</strong> and the <strong>SEQ implementation diagram</strong>, both of which you get during the quiz, so keep them open while you work. About 30 minutes: Part A is encoding (10 min), Part B is the stage notation (10 min), and Part C is new instructions (10 min).</p>
+
+<h2>Warm-up: interleaved recall</h2>
+
+<div class="quiz" data-answer="2">
+  <p class="q">With forwarding, how many bubbles does a load/use hazard (<code>mrmovq</code> followed immediately by a use of its destination) cost?</p>
+  <ol class="opts"><li>0</li><li>3</li><li>1</li><li>2</li></ol>
+  <div class="why"><p>One stall. <code>valM</code> exists only at the end of Memory, so the consumer waits one cycle in Decode and then takes <code>m_valM</code> (<a href="0001-value-forwarding.html">Lesson 1</a>). Keep that “when is the value first known?” question in mind. Part B answers it for every instruction.</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q">Without prediction, <code>ret</code> costs 3 bubbles. Which SEQ stage produces the return address?</p>
+  <ol class="opts"><li>Memory (<code>valM = M8[valA]</code>)</li><li>Execute (<code>valE</code>)</li><li>Fetch (<code>valC</code>)</li><li>Decode (<code>valA</code>)</li></ol>
+  <div class="why"><p>The return address is read from the stack in Memory, and the next PC is <code>valM</code>. Fetch can't continue until <code>ret</code> has reached Memory, which is why it costs 3 bubbles. Part B shows this in the stage table.</p></div>
+</div>
+
+<!-- ===================================================== -->
+<h2>Part A · Assembly ⇄ bytes</h2>
+
+<p>Every instruction is built from at most four fields, always in the same order <a href="#src" class="cite">y86 Reference, “Instructions Encoding”</a>:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Byte(s)</th><th>Field</th><th>Present when</th></tr>
+  <tr><td>0</td><td><code>icode:ifun</code>, one hex digit each</td><td>always</td></tr>
+  <tr><td>1</td><td><code>rA:rB</code>, one hex digit each (<code>F</code> = no register)</td><td>the instruction names a register</td></tr>
+  <tr><td>next 8</td><td><code>V</code>, <code>D</code> or <code>Dest</code>: 8 bytes, <strong>little-endian</strong></td><td>the instruction has a constant</td></tr>
+</table>
+</div>
+
+<p>That gives four sizes, and you should know them by heart. They are exactly the <code>valP = PC + n</code> values in Part B.</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Bytes</th><th>Instructions</th><th>Why</th></tr>
+  <tr><td><strong>1</strong></td><td><code>halt</code> 00 · <code>nop</code> 10 · <code>ret</code> 90</td><td>no registers, no constant</td></tr>
+  <tr><td><strong>2</strong></td><td><code>rrmovq</code>/<code>cmovXX</code> 2fn · <code>OPq</code> 6fn · <code>pushq</code> A0 · <code>popq</code> B0</td><td>registers, no constant</td></tr>
+  <tr><td><strong>9</strong></td><td><code>jXX</code> 7fn · <code>call</code> 80</td><td>constant but <em>no register byte</em></td></tr>
+  <tr><td><strong>10</strong></td><td><code>irmovq</code> 30 · <code>rmmovq</code> 40 · <code>mrmovq</code> 50</td><td>registers and a constant</td></tr>
+</table>
+</div>
+
+<h3>Worked example: <code>rmmovq %rcx, 16(%rsp)</code></h3>
+<ol class="steps">
+  <li><code>rmmovq</code> is icode 4, ifun 0, so byte 0 is <code>40</code>.</li>
+  <li>The register byte is <code>rA:rB</code>. rA is the <em>source</em>, <code>%rcx</code> = 1. rB is the <em>base</em>, <code>%rsp</code> = 4. So byte 1 is <code>14</code>.</li>
+  <li><code>D</code> = 16 = 0x10. As 8 bytes, least-significant first: <code>10 00 00 00 00 00 00 00</code>.</li>
+</ol>
+<p>Result: <code>40 14 10 00 00 00 00 00 00 00</code>.</p>
+
+<div class="callout">
+  <span class="label">The five traps that cost marks</span>
+  <ol>
+    <li><strong><code>mrmovq D(rB), rA</code> lists the destination last, but it still goes in the rA slot.</strong> So <code>mrmovq 8(%rbx), %rax</code> encodes as <code>50 03 …</code> (rA = %rax = 0, rB = %rbx = 3). For both memory moves, the register inside the parentheses is always <strong>rB</strong>.</li>
+    <li><strong>Unused register slots are <code>F</code>.</strong> <code>irmovq</code> is <code>3 0 F rB</code>, and <code>pushq</code>/<code>popq</code> are <code>A/B 0 rA F</code>. For example, <code>pushq %rsi</code> encodes as <code>a0 6f</code>.</li>
+    <li><strong>Little-endian applies to the 8-byte constant only.</strong> <code>0x1234</code> becomes <code>34 12 00 00 00 00 00 00</code>. Never reverse the <code>icode:ifun</code> or <code>rA:rB</code> bytes.</li>
+    <li><strong>Negative constants are two's complement across all 8 bytes.</strong> −8 becomes <code>f8 ff ff ff ff ff ff ff</code>, and −1 is all <code>ff</code>.</li>
+    <li><strong><code>OPq rA, rB</code> computes rB OP rA.</strong> So <code>subq %rax, %rbx</code> (encoded <code>61 03</code>) sets %rbx ← %rbx − %rax.</li>
+  </ol>
+</div>
+
+<p>Two lookups from the reference sheet you'll use constantly: the ifun row is <strong>add sub and xor mul div mod</strong> = 0–6 for OPq, and <strong>(always) le l e ne ge g</strong> = 0–6 for jXX/cmovXX. Register numbers follow <code>%rax %rcx %rdx %rbx %rsp %rbp %rsi %rdi</code> = 0–7, then <code>%r8–%r14</code> = 8–E.</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q">Encode <code>mrmovq -8(%rbp), %rdi</code>.</p>
+  <ol class="opts">
+    <li><code>50 57 f8 ff ff ff ff ff ff ff</code></li>
+    <li><code>50 75 f8 ff ff ff ff ff ff ff</code></li>
+    <li><code>50 75 08 00 00 00 00 00 00 00</code></li>
+    <li><code>50 75 ff ff ff ff ff ff ff f8</code></li>
+  </ol>
+  <div class="why"><p>The destination <code>%rdi</code> = 7 goes in rA, and the base <code>%rbp</code> = 5 goes in rB, so byte 1 is <code>75</code> (trap 1). −8 is <code>…fff8</code>, written least-significant byte first, so it starts with <code>f8</code> (traps 3 and 4).</p></div>
+</div>
+
+<div class="quiz" data-answer="3">
+  <p class="q">Which instruction is <code>63 21</code>?</p>
+  <ol class="opts"><li><code>xorq %rcx, %rdx</code></li><li><code>andq %rdx, %rcx</code></li><li><code>subq %rdx, %rcx</code></li><li><code>xorq %rdx, %rcx</code></li></ol>
+  <div class="why"><p>Byte 0 is <code>6 3</code>, which is OPq with ifun 3 = <strong>xor</strong>. Byte 1 is <code>2 1</code>, so rA = %rdx and rB = %rcx. The assembly lists rA first: <code>xorq %rdx, %rcx</code>.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="9">
+  <p class="q">How many bytes long is <code>call 0x40</code>?</p>
+  <div class="why"><p>9 bytes: 1 for <code>80</code> plus an 8-byte Dest. There's no register byte, so the destination starts at <code>PC+1</code>. That's why Part B has <code>valC = M8[PC+1]</code> for call and jXX, but <code>M8[PC+2]</code> for irmovq, rmmovq and mrmovq.</p></div>
+</div>
+
+<h3>Reading a byte stream</h3>
+<p>Quizzes like to give you a run of bytes starting at some address. Read byte 0 first, because its icode tells you the instruction's length, and that tells you where the next instruction starts.</p>
+
+<pre><code>0x100: 30 f2 0a 00 00 00 00 00 00 00 20 21 61 21 74 00 01 00 00 00 00 00 00 00</code></pre>
+
+<details class="hint"><summary>Try decoding it yourself first, then open this</summary>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Address</th><th>Bytes</th><th>Instruction</th></tr>
+  <tr><td>0x100</td><td><code>30 f2 0a 00…00</code> (10)</td><td><code>irmovq $10, %rdx</code></td></tr>
+  <tr><td>0x10a</td><td><code>20 21</code> (2)</td><td><code>rrmovq %rdx, %rcx</code></td></tr>
+  <tr><td>0x10c</td><td><code>61 21</code> (2)</td><td><code>subq %rdx, %rcx</code></td></tr>
+  <tr><td>0x10e</td><td><code>74 00 01 00…00</code> (9)</td><td><code>jne 0x100</code></td></tr>
+</table>
+</div>
+<p>Watch the addresses: 0x100 + 10 = 0x10<strong>a</strong>, not 0x110. Do address arithmetic in hex.</p>
+</details>
+
+<div class="quiz" data-answer="2">
+  <p class="q">This code starts at <code>0x200</code>: <code>a0 3f 50 13 10 00 00 00 00 00 00 00 60 10 b0 3f 90</code>. At what address is the <code>ret</code>, and what is the second instruction?</p>
+  <ol class="opts">
+    <li><code>0x20f</code>, <code>mrmovq 16(%rcx), %rbx</code></li>
+    <li><code>0x210</code>, <code>rmmovq %rcx, 16(%rbx)</code></li>
+    <li><code>0x210</code>, <code>mrmovq 16(%rbx), %rcx</code></li>
+    <li><code>0x216</code>, <code>mrmovq 16(%rbx), %rcx</code></li>
+  </ol>
+  <div class="why"><p><code>pushq %rbx</code> (2), <code>mrmovq 16(%rbx), %rcx</code> (10; <code>50</code> is mrmovq, rA = 1 = %rcx is the destination, rB = 3 = %rbx is the base), <code>addq %rcx, %rax</code> (2), <code>popq %rbx</code> (2). That's 16 bytes in hex, 0x200 + 0x10 = <strong>0x210</strong>, and <code>90</code> is ret.</p></div>
+</div>
+
+<p>Now drill until both directions feel automatic. The instructions are random, so aim for 8 correct in a row. In the bytes → assembly drill, any spelling that produces the same bytes counts, so <code>$16</code> and <code>$0x10</code> are both fine.</p>
+
+<div id="drill-tobytes"></div>
+<div id="drill-toasm"></div>
+
+<!-- ===================================================== -->
+<h2>Part B · The six SEQ stages, in course notation</h2>
+
+<p>SEQ runs every instruction through the same six phases, in this order, within one clock cycle <a href="#src" class="cite">slides 1.5 “rrmovq three ways”; CS:APP §4.3.1</a>. Here's what each phase does in plain English. The goals ask you to explain this, so practise saying it in your own words.</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Phase</th><th>What it does</th><th>Signals it may use (slide 27)</th></tr>
+  <tr><td><strong>Fetch</strong></td><td>Reads the instruction bytes at <code>PC</code> and splits them into icode, ifun, rA, rB and valC. Computes <code>valP</code>, the address of the next instruction in order.</td><td>icode, ifun, rA, rB, valC, valP, PC, instruction memory</td></tr>
+  <tr><td><strong>Decode</strong></td><td>Reads up to <strong>two</strong> registers from the register file into <code>valA</code> and <code>valB</code>.</td><td>rA, rB (or %rsp), valA, valB</td></tr>
+  <tr><td><strong>Execute</strong></td><td>Runs the ALU <strong>once</strong> to compute <code>valE</code>. OPq sets the condition codes here, and jXX/cmovXX compute <code>Cnd</code> here.</td><td>valA, valB, valC, valE, 0, ±8, CC, Cnd, cond, setCC, ifun</td></tr>
+  <tr><td><strong>Memory</strong></td><td>Makes at most <strong>one</strong> data-memory access: reads into <code>valM</code> or writes a value.</td><td>valA, valE, valM, valP, memory</td></tr>
+  <tr><td><strong>Writeback</strong></td><td>Writes up to <strong>two</strong> registers: port E gets <code>valE</code> and port M gets <code>valM</code>.</td><td>Cnd, rA, rB (or %rsp), valE, valM</td></tr>
+  <tr><td><strong>PC update</strong></td><td>Sets <code>PC</code> to the next instruction's address.</td><td>PC, Cnd, valC, valM, valP</td></tr>
+</table>
+</div>
+
+<h3>The whole ISA on one table</h3>
+<p>This is the course's own solution to I6 (y86 Stages of Execution), with notation copied exactly <a href="#src" class="cite">y86 Stages of Execution – Solution</a>. All rows share the same first Fetch line, <code>icode:ifun = M1[PC]</code>.</p>
+
+<div class="table-scroll">
+<table class="data stages">
+  <tr><th></th><th>OPq rA, rB</th><th>rrmovq / cmovXX</th><th>irmovq V, rB</th><th>rmmovq rA, D(rB)</th><th>mrmovq D(rB), rA</th></tr>
+  <tr><td>Fetch</td><td>rA:rB = M1[PC+1]<br>valP = PC+2</td><td>rA:rB = M1[PC+1]<br>valP = PC+2</td><td>rA:rB = M1[PC+1]<br>valC = M8[PC+2]<br>valP = PC+10</td><td>rA:rB = M1[PC+1]<br>valC = M8[PC+2]<br>valP = PC+10</td><td>rA:rB = M1[PC+1]<br>valC = M8[PC+2]<br>valP = PC+10</td></tr>
+  <tr><td>Decode</td><td>valA = R[rA]<br>valB = R[rB]</td><td>valA = R[rA]</td><td></td><td>valA = R[rA]<br>valB = R[rB]</td><td>valB = R[rB]</td></tr>
+  <tr><td>Execute</td><td>valE = valB OP valA<br>set CC</td><td>valE = valA + 0<br><em>cmov:</em> Cnd = cond(CC, ifun)</td><td>valE = valC + 0</td><td>valE = valB + valC</td><td>valE = valB + valC</td></tr>
+  <tr><td>Memory</td><td></td><td></td><td></td><td>M8[valE] = valA</td><td>valM = M8[valE]</td></tr>
+  <tr><td>Writeback</td><td>R[rB] = valE</td><td>R[rB] = valE<br><em>cmov:</em> if (Cnd) R[rB] = valE</td><td>R[rB] = valE</td><td></td><td>R[rA] = valM</td></tr>
+  <tr><td>PC update</td><td>PC = valP</td><td>PC = valP</td><td>PC = valP</td><td>PC = valP</td><td>PC = valP</td></tr>
+</table>
+</div>
+
+<div class="table-scroll">
+<table class="data stages">
+  <tr><th></th><th>pushq rA</th><th>popq rA</th><th>call Dest</th><th>ret</th><th>jXX Dest</th></tr>
+  <tr><td>Fetch</td><td>rA:rB = M1[PC+1]<br>valP = PC+2</td><td>rA:rB = M1[PC+1]<br>valP = PC+2</td><td>valC = M8[PC+1]<br>valP = PC+9</td><td>valP = PC+1</td><td>valC = M8[PC+1]<br>valP = PC+9</td></tr>
+  <tr><td>Decode</td><td>valA = R[rA]<br>valB = R[%rsp]</td><td>valA = R[%rsp]<br>valB = R[%rsp]</td><td>valB = R[%rsp]</td><td>valA = R[%rsp]<br>valB = R[%rsp]</td><td></td></tr>
+  <tr><td>Execute</td><td>valE = valB + (−8)</td><td>valE = valB + 8</td><td>valE = valB + (−8)</td><td>valE = valB + 8</td><td>Cnd = cond(CC, ifun)</td></tr>
+  <tr><td>Memory</td><td>M8[valE] = valA</td><td>valM = M8[valA]</td><td>M8[valE] = valP</td><td>valM = M8[valA]</td><td></td></tr>
+  <tr><td>Writeback</td><td>R[%rsp] = valE</td><td>R[%rsp] = valE<br>R[rA] = valM</td><td>R[%rsp] = valE</td><td>R[%rsp] = valE</td><td></td></tr>
+  <tr><td>PC update</td><td>PC = valP</td><td>PC = valP</td><td>PC = valC</td><td>PC = valM</td><td>PC = Cnd ? valC : valP</td></tr>
+</table>
+</div>
+
+<div class="callout key">
+  <span class="label">Don't memorise the table. Rebuild it from five rules.</span>
+  <ol>
+    <li><strong>Need a constant?</strong> Fetch reads <code>valC</code>. It's at <code>PC+2</code> if there's a register byte, otherwise <code>PC+1</code>. <code>valP</code> is PC plus the instruction length from Part A.</li>
+    <li><strong>Need a register's value?</strong> Decode reads it. The register used as a <em>value</em> or <em>data</em> goes in <code>valA</code>. The register used as a <em>base</em>, <em>second operand</em> or the stack pointer goes in <code>valB</code>.</li>
+    <li><strong>Need arithmetic or an address?</strong> Execute computes one <code>valE</code>. The stack instructions always produce the new %rsp here: −8 for push/call, +8 for pop/ret.</li>
+    <li><strong>Touch data memory?</strong> Memory does it. A write stores <code>valA</code> (or <code>valP</code> for call, which is the return address). A read produces <code>valM</code>.</li>
+    <li><strong>Change a register?</strong> Writeback: <code>valE</code> goes to a register through port E, and <code>valM</code> through port M. Then PC update chooses among <code>valP</code>, <code>valC</code> and <code>valM</code>.</li>
+  </ol>
+</div>
+
+<div class="callout">
+  <span class="label">Two details students miss</span>
+  <p><strong>pop and ret read memory at <code>valA</code>, the old %rsp, not at <code>valE</code>.</strong> The value on top of the stack is at the current %rsp, and <code>valE</code> = %rsp + 8 is only the <em>new</em> stack pointer. That's why Decode reads %rsp twice. In contrast, push and call write at <code>valE</code> = %rsp − 8.</p>
+  <p><strong>jXX reads no registers.</strong> It only uses the condition codes, which a <em>previous</em> OPq set. cmovXX computes <code>Cnd</code> but does <em>not</em> set CC. Only OPq sets CC.</p>
+</div>
+
+<div class="quiz" data-answer="0,2,4">
+  <p class="q">Which instructions leave the Memory stage empty? Select all that apply.</p>
+  <ol class="opts"><li><code>OPq</code></li><li><code>call</code></li><li><code>irmovq</code></li><li><code>popq</code></li><li><code>jXX</code></li></ol>
+  <div class="why"><p>Only instructions that move data to or from memory use the Memory stage: rmmovq, mrmovq, push, pop, call and ret. call writes the return address (<code>M8[valE] = valP</code>), and pop reads <code>valM</code>.</p></div>
+</div>
+
+<div class="quiz" data-answer="3">
+  <p class="q">For <code>popq %rax</code> with %rsp = 0x100, which pair is right?</p>
+  <ol class="opts">
+    <li>Reads M8[0x108]; %rsp becomes 0x108</li>
+    <li>Reads M8[0xf8]; %rsp becomes 0xf8</li>
+    <li>Reads M8[0x108]; %rsp becomes 0x100</li>
+    <li>Reads M8[0x100]; %rsp becomes 0x108</li>
+  </ol>
+  <div class="why"><p><code>valA = valB = 0x100</code>. <code>valE = valB + 8 = 0x108</code>, which becomes the new %rsp. <code>valM = M8[valA] = M8[0x100]</code>, which is written to %rax.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q">Which instruction is the only one in the standard ISA that writes <em>two</em> registers in Writeback?</p>
+  <ol class="opts"><li><code>call</code></li><li><code>popq</code></li><li><code>mrmovq</code></li><li><code>ret</code></li></ol>
+  <div class="why"><p>popq writes %rsp through port E and rA through port M. Two write ports means at most two register writes per instruction, which matters in Part C.</p></div>
+</div>
+
+<p>Now sort them. Each drill shuffles one instruction's operations and adds one or two <em>distractors</em> that belong in “not used”. Do all of them. The last two are new instructions, as a preview of Part C.</p>
+
+<div id="drill-stages"></div>
+
+<!-- ===================================================== -->
+<h2>Part C · A new instruction: can SEQ run it?</h2>
+
+<p>The quiz goal says: <em>“Given a, possibly new, instruction, list the operations at each phase, or explain why the instruction cannot be executed.”</em> To answer, check the instruction against what the SEQ hardware actually has <a href="#src" class="cite">slides 1.6, “Why can't we have addm?”, and slide 27 of 1.5</a>:</p>
+
+<div class="callout key">
+  <span class="label">The hardware budget: one of each</span>
+  <ul>
+    <li><strong>Fetch:</strong> one constant <code>valC</code>, at most.</li>
+    <li><strong>Decode:</strong> two register reads, <code>valA</code> and <code>valB</code>.</li>
+    <li><strong>Execute:</strong> <strong>one ALU operation</strong>. The ALU's A input can be <code>valA</code>, <code>valC</code> or ±8. Its B input can be <code>valB</code> or 0. So you can compute valB+valC, valA+0 or valB−8, but <em>not</em> valA+valC (both on the A side) and <em>not</em> anything involving valM.</li>
+    <li><strong>Memory:</strong> one access. The address is <code>valE</code> or <code>valA</code>. The data written is <code>valA</code> or <code>valP</code>.</li>
+    <li><strong>Writeback:</strong> two register writes. Port E takes <code>valE</code> and port M takes <code>valM</code>.</li>
+    <li><strong>PC update:</strong> one of <code>valP</code>, <code>valC</code> or <code>valM</code>, optionally chosen by <code>Cnd</code>.</li>
+  </ul>
+  <p>If an instruction fits this budget, write its table. If it needs a second ALU operation, a second memory access, a third register write, or a value on a wire that doesn't exist, it <strong>can't be executed</strong>. Name the specific resource that's missing.</p>
+</div>
+
+<h3>Worked example 1: <code>iaddq V, rB</code> (R[rB] ← R[rB] + V). It fits.</h3>
+<p>The encoding is like irmovq with a new icode, say <code>C 0 F rB V</code>, so it's 10 bytes. It needs a constant (valC), one register read (valB = R[rB]), one add (valB + valC), and one register write.</p>
+<div class="table-scroll">
+<table class="data stages">
+  <tr><td>Fetch</td><td>icode:ifun = M1[PC] · rA:rB = M1[PC+1] · valC = M8[PC+2] · valP = PC+10</td></tr>
+  <tr><td>Decode</td><td>valB = R[rB]</td></tr>
+  <tr><td>Execute</td><td>valE = valB + valC · set CC</td></tr>
+  <tr><td>Memory</td><td></td></tr>
+  <tr><td>Writeback</td><td>R[rB] = valE</td></tr>
+  <tr><td>PC update</td><td>PC = valP</td></tr>
+</table>
+</div>
+<p class="muted">Setting CC is a design choice. It's an arithmetic operation like addq, so setting CC is the natural answer, but state your choice.</p>
+
+<h3>Worked example 2: <code>addm D(rB), rA</code> (R[rA] ← M[D + R[rB]] + R[rA]). It can't run.</h3>
+<p>This one comes from slides 1.6. The address <code>D + R[rB]</code> needs the ALU in Execute. The sum <code>valM + valA</code> would need the ALU a <strong>second time</strong>, after Memory. SEQ has one ALU and one valE, and no wire from valM back to the ALU. Adding a second ALU after Memory would also lengthen the critical path, so the clock cycle would get longer.</p>
+
+<div class="callout">
+  <span class="label">How to write a “can't” answer</span>
+  Name the conflict in one sentence: <em>“addm needs two ALU operations (address = valB + valC, then valM + valA), but SEQ has a single ALU used once in Execute, and valM isn't available until after Execute.”</em> Answers like “it's too complicated” earn nothing.
+</div>
+
+<p>Your turn. Decide each one before opening the explanation.</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><code>jmpr rA</code>: PC ← R[rA] (a jump through a register). Can SEQ run it as is?</p>
+  <ol class="opts">
+    <li>Yes: valA = R[rA]; PC = valA</li>
+    <li>No. PC update can only choose valP, valC or valM, and no wire carries valA or valE to Next PC.</li>
+    <li>No, because it would need two register reads</li>
+    <li>Yes: valE = valA + 0; PC = valE</li>
+  </ol>
+  <div class="why"><p>Check the diagram: Next PC's inputs are valP, valC, valM, icode and Cnd. The register value can reach valA and then valE, but neither one is connected to Next PC. It would need a new wire. (You could “cheat” by bouncing the value through memory, but that's a different instruction.)</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><code>incq rB</code>: R[rB] ← R[rB] + 1, encoded in 2 bytes (<code>D0 Fr</code>). Can SEQ run it?</p>
+  <ol class="opts">
+    <li>Yes: valE = valB + 1</li>
+    <li>Yes: valE = valB + 8, then divide by 8</li>
+    <li>No. The ALU's constant inputs are only 0 and ±8, and a 2-byte encoding has no valC to supply the 1.</li>
+    <li>No, because it writes a register in Writeback</li>
+  </ol>
+  <div class="why"><p>The only constants wired into the ALU are 0 and ±8. Making it a 10-byte instruction with V = 1 gives you <code>iaddq $1, rB</code>, which does fit. That's the fix you'd suggest.</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q"><code>swapq rA, rB</code>: exchange two registers. Can SEQ run it?</p>
+  <ol class="opts">
+    <li>No. Two register writes need valE <em>and</em> valM, but valM only comes from a memory read, and the ALU can pass through only one of the two values.</li>
+    <li>Yes: R[rA] = valB; R[rB] = valA</li>
+    <li>No, because Decode can only read one register</li>
+    <li>Yes: valE = valA + 0; valM = valB; then write both</li>
+  </ol>
+  <div class="why"><p>Writeback writes only <code>valE</code> (port E) and <code>valM</code> (port M), and nothing connects valA or valB directly to the register file's write ports. The ALU can carry one of the values through valE, but the other would have to arrive as valM, and valM is only produced by reading memory. So the answer is no.</p></div>
+</div>
+
+<div class="quiz" data-answer="3">
+  <p class="q"><code>mmmovq (rA), (rB)</code>: M[R[rB]] ← M[R[rA]], a memory-to-memory copy. Can SEQ run it?</p>
+  <ol class="opts">
+    <li>Yes: valM = M8[valA]; M8[valB] = valM</li>
+    <li>Yes, since both addresses come from registers</li>
+    <li>No, because it needs a constant</li>
+    <li>No. It needs two data-memory accesses, a read and then a write, and the Memory stage does exactly one.</li>
+  </ol>
+  <div class="why"><p>The budget is one memory access per instruction. Even ignoring that, the data written must be valA or valP, not valM.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><code>ldinc (rB), rA</code>: R[rA] ← M[R[rB]], then R[rB] ← R[rB] + 8 (a load that advances a pointer). Can SEQ run it?</p>
+  <ol class="opts">
+    <li>No, because it writes two registers</li>
+    <li>Yes. It has the same shape as popq, with rB in place of %rsp.</li>
+    <li>No, because it needs two ALU operations</li>
+    <li>Yes, but only if it's 10 bytes</li>
+  </ol>
+  <div class="why"><p>Decode: <code>valA = R[rB]</code>, <code>valB = R[rB]</code>. Execute: <code>valE = valB + 8</code>. Memory: <code>valM = M8[valA]</code>. Writeback: <code>R[rB] = valE</code>, <code>R[rA] = valM</code>. PC: <code>valP</code> (2 bytes). Two writes are fine because there are two ports. It's the last instruction in the sorter drill above.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">Harder: <code>pushi V</code>, which pushes an immediate (M8[R[%rsp]−8] ← V; %rsp −= 8). Can SEQ run it?</p>
+  <ol class="opts">
+    <li>Yes: like call, with valC as the data</li>
+    <li>Yes: valE = valC + (−8)</li>
+    <li>No, not as wired. Memory may only write valA or valP, and valC isn't routed to the memory's data input. It needs a new wire, valC → Data.</li>
+    <li>No, because it needs three register reads</li>
+  </ol>
+  <div class="why"><p>The address part is fine: <code>valB = R[%rsp]</code>, <code>valE = valB + (−8)</code>. The data part fails. Slide 27 lists only valA, valE, valM and valP for Memory, and the diagram's Data block takes only valA and valP. call gets away with it because what it pushes is <code>valP</code>. Watch for this kind of trap: the arithmetic fits, but a wire is missing.</p></div>
+</div>
+
+<div class="callout">
+  <span class="label">Pipelines use the same notation</span>
+  The goal “given a pipeline description, describe each stage in y86 notation” asks for the same skill on a made-up pipeline, for example a 3-stage machine that does <code>R[rB] = R[rA] * R[rB]; PC = PC + 2</code>. Use the same symbols, and state what each stage reads and writes. If you meet one on a practice quiz, paste it to me and we'll do it together.
+</div>
+
+<h2 id="src">Sources</h2>
+<div class="callout">
+  <span class="label">Course materials (authoritative)</span>
+  <strong>y86 Reference</strong> (encoding table, ifun values, register numbers). <strong>y86 Stages of Execution – Solution</strong> (I6). Slides <strong>1.5 “y86 Implementation”</strong> (rrmovq three ways, rrmovq → cmovXX, “Allowed in specifications” on slide 27). Slides <strong>1.6 “Logic and wrap-up”</strong> (addm, ALU-A logic block). The <strong>y86 implementation diagram</strong> for wiring. Textbook: <strong>CS:APP 3e §4.1.3</strong> (encoding) and <strong>§4.3.1–4.3.2</strong> (SEQ stages, Figs. 4.18–4.21).
+</div>
+
+<div class="callout key">
+  <span class="label">Spacing</span>
+  Tomorrow, before anything else, write the pushq / popq / call / ret columns on paper from memory, then check them against Part B. Those four columns account for most of the errors on this kind of question.
+</div>
+
+<p class="ask">Got an I5 or I6 question or a practice-quiz item that doesn't match these rules? Paste it to me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0006-latency-throughput-cpi.html">← Lesson 6: Latency, throughput, CPI</a>
+  <a href="../reference/0001-pipeline-hazards-cheatsheet.html">Cheat sheet</a>
+  <a href="0008-pipeline-problem-workout.html">Lesson 8: Pipeline problem workout →</a>
+</nav>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/encode.js"></script>
+<script>
+  var F = 0, D = 1, E = 2, M = 3, W = 4, P = 5, X = 6;
+  var IC = ['icode:ifun = M1[PC]', F];
+  Encode.toBytes(document.getElementById('drill-tobytes'));
+  Encode.toAsm(document.getElementById('drill-toasm'));
+  Stages.sorter(document.getElementById('drill-stages'), [
+    { name: 'pushq rA', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valP = PC + 2', F], ['valA = R[rA]', D], ['valB = R[%rsp]', D],
+        ['valE = valB + (-8)', E], ['M8[valE] = valA', M], ['R[%rsp] = valE', W], ['PC = valP', P], ['M8[valB] = valA', X]],
+      why: 'Push writes <em>below</em> the old top, at valE = %rsp − 8. Writing at valB would overwrite the current top of the stack.' },
+    { name: 'popq rA', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valP = PC + 2', F], ['valA = R[%rsp]', D], ['valB = R[%rsp]', D],
+        ['valE = valB + 8', E], ['valM = M8[valA]', M], ['R[%rsp] = valE', W], ['R[rA] = valM', W], ['PC = valP', P], ['valM = M8[valE]', X]],
+      why: 'Pop reads at the <em>old</em> %rsp (valA). valE is the new %rsp, one slot above the value being popped.' },
+    { name: 'call Dest', ops: [IC, ['valC = M8[PC+1]', F], ['valP = PC + 9', F], ['valB = R[%rsp]', D], ['valE = valB + (-8)', E],
+        ['M8[valE] = valP', M], ['R[%rsp] = valE', W], ['PC = valC', P], ['rA:rB = M1[PC+1]', X]],
+      why: 'call has no register byte, so valC is at PC+1. It pushes valP, the return address, and jumps to valC.' },
+    { name: 'ret', ops: [IC, ['valP = PC + 1', F], ['valA = R[%rsp]', D], ['valB = R[%rsp]', D], ['valE = valB + 8', E],
+        ['valM = M8[valA]', M], ['R[%rsp] = valE', W], ['PC = valM', P], ['PC = valP', X]],
+      why: 'ret is a pop into the PC. The return address is valM, which is only known after Memory. That is the reason for the 3-bubble ret hazard.' },
+    { name: 'mrmovq D(rB), rA', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valC = M8[PC+2]', F], ['valP = PC + 10', F], ['valB = R[rB]', D],
+        ['valE = valB + valC', E], ['valM = M8[valE]', M], ['R[rA] = valM', W], ['PC = valP', P], ['R[rB] = valE', X]],
+      why: 'The loaded value goes to rA through port M. rB is only the base register and is never written.' },
+    { name: 'rmmovq rA, D(rB)', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valC = M8[PC+2]', F], ['valP = PC + 10', F], ['valA = R[rA]', D], ['valB = R[rB]', D],
+        ['valE = valB + valC', E], ['M8[valE] = valA', M], ['PC = valP', P], ['R[rA] = valM', X]],
+      why: 'A store writes no registers, so Writeback is empty.' },
+    { name: 'OPq rA, rB', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valP = PC + 2', F], ['valA = R[rA]', D], ['valB = R[rB]', D],
+        ['valE = valB OP valA', E], ['set CC', E], ['R[rB] = valE', W], ['PC = valP', P], ['valC = M8[PC+2]', X]],
+      why: 'Note the order valB OP valA: subq rA, rB computes rB − rA. OPq is the only standard instruction that sets CC.' },
+    { name: 'cmovXX rA, rB', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valP = PC + 2', F], ['valA = R[rA]', D], ['valE = valA + 0', E],
+        ['Cnd = cond(CC, ifun)', E], ['if (Cnd) R[rB] = valE', W], ['PC = valP', P], ['set CC', X]],
+      why: 'cmov <em>reads</em> CC through cond(); it never sets CC.' },
+    { name: 'jXX Dest', ops: [IC, ['valC = M8[PC+1]', F], ['valP = PC + 9', F], ['Cnd = cond(CC, ifun)', E],
+        ['PC = Cnd ? valC : valP', P], ['valA = R[rA]', X]],
+      why: 'jXX has no register byte and reads no registers. It depends only on CC from an earlier OPq.' },
+    { name: 'irmovq V, rB', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valC = M8[PC+2]', F], ['valP = PC + 10', F],
+        ['valE = valC + 0', E], ['R[rB] = valE', W], ['PC = valP', P], ['valB = R[rB]', X]],
+      why: 'Nothing is read from registers. The constant passes through the ALU (+0) to reach port E.' },
+    { name: 'iaddq V, rB  (new)', note: 'R[rB] ← R[rB] + V, encoded C 0 F rB V (10 bytes).', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valC = M8[PC+2]', F],
+        ['valP = PC + 10', F], ['valB = R[rB]', D], ['valE = valB + valC', E], ['set CC', E], ['R[rB] = valE', W], ['PC = valP', P], ['valE = valA + valC', X]],
+      why: 'valA + valC is impossible because both are inputs to the ALU\'s A side. That is why the register goes in valB.' },
+    { name: 'ldinc (rB), rA  (new)', note: 'R[rA] ← M8[R[rB]]; R[rB] ← R[rB] + 8. 2 bytes. Hint: it has the same shape as popq.', ops: [IC, ['rA:rB = M1[PC+1]', F], ['valP = PC + 2', F],
+        ['valA = R[rB]', D], ['valB = R[rB]', D], ['valE = valB + 8', E], ['valM = M8[valA]', M], ['R[rB] = valE', W], ['R[rA] = valM', W], ['PC = valP', P], ['valM = M8[valE]', X]],
+      why: 'This is popq with rB in place of %rsp. Reading at valA (the old pointer) loads the current element.' }
+  ]);
+</script>
+</body>
+</html>

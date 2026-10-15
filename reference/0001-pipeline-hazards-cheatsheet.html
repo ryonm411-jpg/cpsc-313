@@ -43,6 +43,28 @@
 </div>
 <p class="muted">lowercase <code>e_</code>/<code>m_</code> = computed by that stage this cycle · UPPERCASE <code>M_</code>/<code>W_</code> = stored in that pipeline register. There's no <code>m_valE</code> forward (Memory passes valE through unchanged).</p>
 
+<h2>Snapshots (no stalls)</h2>
+<ul>
+  <li>An instruction <strong>k lines earlier is k stages further along</strong>.</li>
+  <li><code>X_field</code> (UPPERCASE) belongs to the instruction <em>currently in stage X</em>. E.g. <code>E_dstM</code> = dstM of whatever is in Execute.</li>
+  <li><strong>PIPE- (no stalling/forwarding):</strong> nops before consumer = 4 − distance (≥ 0). Inserted nops count toward later distances.</li>
+</ul>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Instruction</th><th>srcA</th><th>srcB</th><th>dstE</th><th>dstM</th></tr>
+  <tr><td><code>OPq rA, rB</code></td><td>rA</td><td>rB</td><td>rB</td><td>—</td></tr>
+  <tr><td><code>rrmovq rA, rB</code> / <code>irmovq V, rB</code></td><td>rA / —</td><td>—</td><td>rB</td><td>—</td></tr>
+  <tr><td><code>rmmovq rA, D(rB)</code></td><td>rA</td><td>rB</td><td>—</td><td>—</td></tr>
+  <tr><td><code>mrmovq D(rB), rA</code></td><td>—</td><td>rB</td><td>—</td><td>rA</td></tr>
+  <tr><td><code>pushq rA</code></td><td>rA</td><td>%rsp</td><td>%rsp</td><td>—</td></tr>
+  <tr><td><code>popq rA</code></td><td>%rsp</td><td>%rsp</td><td>%rsp</td><td>rA</td></tr>
+  <tr><td><code>call</code></td><td>— (d_valA = valP)</td><td>%rsp</td><td>%rsp</td><td>—</td></tr>
+  <tr><td><code>ret</code></td><td>%rsp</td><td>%rsp</td><td>%rsp</td><td>—</td></tr>
+</table>
+</div>
+<p class="muted">Forwarding priority (newest first): <code>e_valE</code> → <code>m_valM</code> → <code>M_valE</code> → <code>W_valM</code> → <code>W_valE</code> → register file. valM beats valE within a stage (<code>popq %rsp</code>).</p>
+<p class="muted">Pipeline registers: D = icode, ifun, rA, rB, valC, valP · E = icode, ifun, valC, valA, valB, dstE, dstM, srcA, srcB · M = icode, Cnd, valE, valA, dstE, dstM · W = icode, valE, valM, dstE, dstM (CS:APP Fig. 4.41).</p>
+
 <h2>Control hazards</h2>
 <div class="table-scroll">
 <table class="data">
@@ -68,10 +90,20 @@
 </div>
 <div>
 <h2>CPI</h2>
-<p>CPI = (I + lost) / I</p>
-<p class="muted">I = instructions executed incl. <code>halt</code>, excluding squashed ones. lost = stall cycles + squashed instructions. (CS:APP §4.5.9.) Check your course's answer key on whether pipeline fill cycles are included.</p>
+<p>CPI = (I + 4 + lost) / I</p>
+<p class="muted">I = instructions executed incl. <code>halt</code>, excluding squashed ones. lost = stall cycles + squashed instructions. The 4 fill cycles are included, as on slides 2.5 (71/37, 43/37), unless the question says to ignore startup (instruction-mix questions like I11.3: CPI = 1 + Σ freq × penalty).</p>
 </div>
 </div>
+
+<h2>Latency, throughput, time</h2>
+<div class="table-scroll">
+<table class="data">
+  <tr><th></th><th>Clock</th><th>Latency</th><th>Throughput (GIPS)</th></tr>
+  <tr><td>SEQ</td><td>Σ stages + reg</td><td>= clock</td><td>1000 / clock(ps)</td></tr>
+  <tr><td>PIPE, k stages</td><td>max stage + reg</td><td>k × clock</td><td>1000 / clock(ps)</td></tr>
+</table>
+</div>
+<p class="muted">1 s = 10<sup>12</sup> ps. PIPE retires one instruction per clock. CPI = 1 + Σ freq × penalty (load/use 1, cond. jump unpredicted/mispredicted 2, ret 3). Time = I × CPI × clock. SEQ CPI = 1 exactly; any pipeline CPI ≥ 1 (ignoring fill).</p>
 
 <h2>Counting procedure</h2>
 <ol class="steps">
@@ -97,7 +129,7 @@
   <dt>Loop unrolling</dt><dd>Doing k iterations' work per pass, so loop overhead (counter, branch) is paid once per k elements.</dd>
 </dl>
 
-<p class="muted">Lessons: <a href="../lessons/0001-value-forwarding.html">1 · Value forwarding</a> · <a href="../lessons/0002-control-hazards-branch-prediction.html">2 · Control hazards &amp; branch prediction</a> · <a href="../lessons/0003-instruction-scheduling.html">3 · Instruction scheduling</a> · <a href="../lessons/0004-c-to-fast-y86.html">4 · From C to fast y86</a>. See also the <a href="0002-y86-optimization-playbook.html">y86 optimization playbook</a> (Lab 5). Sources: slides 2.3, 2.4; Bryant &amp; O’Hallaron, CS:APP 3e §4.5.</p>
+<p class="muted">Lessons: <a href="../lessons/0001-value-forwarding.html">1 · Value forwarding</a> · <a href="../lessons/0002-control-hazards-branch-prediction.html">2 · Control hazards &amp; branch prediction</a> · <a href="../lessons/0003-instruction-scheduling.html">3 · Instruction scheduling</a> · <a href="../lessons/0004-c-to-fast-y86.html">4 · From C to fast y86</a> · <a href="../lessons/0005-pipeline-snapshots.html">5 · Pipeline snapshots</a> · <a href="../lessons/0006-latency-throughput-cpi.html">6 · Latency, throughput &amp; CPI</a>. See also the <a href="0002-y86-optimization-playbook.html">y86 optimization playbook</a> (Lab 5). Sources: slides 2.3, 2.4; Bryant &amp; O’Hallaron, CS:APP 3e §4.5.</p>
 </main>
 </body>
 </html>

@@ -94,7 +94,7 @@ andq   %r8, %r9</code></pre>
   <li><strong>Walk only the executed path</strong>, in order.</li>
   <li><strong>Data hazards:</strong> for each instruction, find the most recent writer of each source register and apply Lesson 1's distance table. With forwarding, only load/use at distance 1 costs anything (1). Without, 3/2/1 stalls at distance 1/2/3.</li>
   <li><strong>Control:</strong> each <code>jXX</code> costs 2 if there's no prediction or the guess is wrong, else 0. Each <code>ret</code> costs 3. <code>jmp</code>/<code>call</code> cost 0.</li>
-  <li><strong>Add it up.</strong> CPI = (instructions executed + lost cycles) / instructions executed, counting the final <code>halt</code> and <em>not</em> counting squashed instructions <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.9</a>.</li>
+  <li><strong>Add it up.</strong> CPI = (instructions executed + 4 + lost cycles) / instructions executed, counting the final <code>halt</code> and <em>not</em> counting squashed instructions. The 4 cycles fill the pipeline: the course's slides 2.5 include them (71/37), so include them unless the question says to ignore startup.</li>
 </ol>
 
 <div class="callout">

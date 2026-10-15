@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latency, Throughput, CPI</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 6 · Quiz 2 prep · Lab 4</div>
+  <h1>Latency, Throughput &amp; CPI</h1>
+  <p class="subtitle">Three numbers, three different questions: how long does <em>one</em> instruction take, how many finish per second, and how many cycles does each one really cost?</p>
+</header>
+
+<p><strong>Your win for today:</strong> from a register latency and stage delays, compute SEQ and PIPE latency and throughput in two lines. From an instruction mix, compute CPI in one line. That covers Lab 4 L4.1–L4.4 and in-class I11.3, and it's the core of L4.7/L4.8. About 15 minutes.</p>
+
+<h2>Warm-up: interleaved recall</h2>
+
+<div class="quiz" data-answer="2">
+  <p class="q">No stalls. When <code>Ln_4</code> is in Decode, which instruction's fields are in <code>M_dstE</code>?</p>
+  <ol class="opts"><li><code>Ln_1</code></li><li><code>Ln_3</code></li><li><code>Ln_2</code></li><li><code>Ln_5</code></li></ol>
+  <div class="why"><p>M is 2 stages ahead of D, so it's 2 lines earlier: <code>Ln_2</code>. (<a href="0005-pipeline-snapshots.html">Lesson 5</a>, the staircase.)</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q">With forwarding but no branch prediction, how many cycles does each conditional jump cost?</p>
+  <ol class="opts"><li>0 cycles</li><li>2 cycles</li><li>3 cycles</li><li>1 cycle</li></ol>
+  <div class="why"><p>The outcome is known only after Execute, so the pipeline waits 2 cycles. <code>ret</code> costs 3; <code>jmp</code>/<code>call</code> cost 0 (<a href="0002-control-hazards-branch-prediction.html">Lesson 2</a>).</p></div>
+</div>
+
+<h2>1 · One unit trick</h2>
+
+<p>1 s = 10<sup>12</sup> ps. If one instruction finishes every <em>T</em> ps, that's 10<sup>12</sup>/<em>T</em> per second = (1000/<em>T</em>) × 10<sup>9</sup>. So:</p>
+
+<div class="callout key">
+  <span class="label">GIPS in one step</span>
+  throughput (GIPS) = <strong>1000 ÷ (ps per instruction)</strong>. A 320 ps cycle gives 1000/320 = 3.12 GIPS.
+</div>
+
+<h2>2 · Sequential: one long cycle</h2>
+
+<p>SEQ is one big block of combinational logic followed by one register. An instruction goes through all of it in one clock cycle <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP 3e §4.4.1, Fig. 4.32</a>:</p>
+
+<ul>
+  <li><strong>clock = latency = Σ stage delays + register</strong></li>
+  <li><strong>throughput = 1000 / latency</strong> (one instruction per cycle)</li>
+</ul>
+
+<p>The book's example: 300 ps of logic + 20 ps register = <strong>320 ps</strong> latency and 1000/320 = <strong>3.12 GIPS</strong>.</p>
+
+<h2>3 · Pipelined: many short cycles</h2>
+
+<p>Cut the logic into <em>k</em> stages with a register after each. The clock must fit the <strong>slowest</strong> stage plus its register <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.4.1–4.4.3, Figs. 4.33, 4.36</a>:</p>
+
+<ul>
+  <li><strong>clock = max stage + register</strong>. One instruction retires every clock, so this is also “an instruction retires every ___ ps.”</li>
+  <li><strong>latency = k × clock</strong>. Every instruction passes through all <em>k</em> stages, and each stage takes a full clock.</li>
+  <li><strong>throughput = 1000 / clock</strong></li>
+</ul>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Book example (20 ps register)</th><th>Clock</th><th>Latency</th><th>Throughput</th></tr>
+  <tr><td>SEQ, 300 ps logic</td><td>320</td><td>320 ps</td><td>3.12 GIPS</td></tr>
+  <tr><td>3 stages × 100</td><td>120</td><td>360 ps</td><td>8.33 GIPS</td></tr>
+  <tr><td>3 stages: 50, 150, 100 (unbalanced)</td><td>170</td><td>510 ps</td><td>5.88 GIPS</td></tr>
+  <tr><td>6 stages × 50</td><td>70</td><td>420 ps</td><td>14.29 GIPS</td></tr>
+</table>
+</div>
+
+<div class="callout">
+  <span class="label">Read the table for the two big ideas</span>
+  <strong>Pipelining makes latency <em>worse</em></strong> (360 &gt; 320), because each instruction now pays for <em>k</em> registers. It still wins on throughput, since <em>k</em> instructions are in flight at once. <strong>Deeper means diminishing returns</strong>: at 6 stages the 20 ps register is 29% of every clock. Unbalanced stages waste time too, since the fast stages wait for the slow one.
+</div>
+
+<p>Try it. The register is 20 ps, and there are 4 stages of 80 ps each.</p>
+
+<div class="quiz numeric" data-answer="340">
+  <p class="q">SEQ latency, in ps?</p>
+  <div class="why"><p>80 × 4 + 20 = 340 ps. One block, one register.</p></div>
+</div>
+<div class="quiz numeric" data-answer="2.94" data-tol="0.005">
+  <p class="q">SEQ throughput, in GIPS (2 decimals)?</p>
+  <div class="why"><p>1000 / 340 = 2.94 GIPS.</p></div>
+</div>
+<div class="quiz numeric" data-answer="400">
+  <p class="q">PIPE latency, in ps?</p>
+  <div class="why"><p>Clock = 80 + 20 = 100 ps. Latency = 4 × 100 = 400 ps. Worse than SEQ's 340.</p></div>
+</div>
+<div class="quiz numeric" data-answer="10" data-tol="0.005">
+  <p class="q">PIPE throughput, in GIPS (2 decimals)?</p>
+  <div class="why"><p>1000 / 100 = 10.00 GIPS. More than 3× SEQ.</p></div>
+</div>
+
+<h2>4 · CPI: what hazards cost</h2>
+
+<p>Ignoring pipeline fill, an ideal pipeline retires one instruction per cycle (CPI = 1). Every bubble adds a cycle to that <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.9</a>:</p>
+
+<div class="callout key">
+  <span class="label">The formula</span>
+  CPI = 1 + Σ (fraction of instructions with that event × its penalty in cycles)
+</div>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Event (with forwarding)</th><th>Penalty</th></tr>
+  <tr><td>load/use hazard (can't be forwarded in time)</td><td>1</td></tr>
+  <tr><td>conditional jump, <em>no</em> prediction (every one)</td><td>2</td></tr>
+  <tr><td>conditional jump, <em>mispredicted</em></td><td>2</td></tr>
+  <tr><td><code>ret</code></td><td>3</td></tr>
+  <tr><td><code>jmp</code>, <code>call</code>, correctly predicted jump</td><td>0</td></tr>
+</table>
+</div>
+
+<p>Watch the <strong>nested percentages</strong>: “20% of instructions are branches, 60% of <em>those</em> are conditional” means 0.20 × 0.60 = 12% of instructions. The book's example: lp 0.05 + mp 0.16 + rp 0.06, so CPI = 1.27.</p>
+
+<div class="quiz numeric" data-answer="1.32" data-tol="0.0005">
+  <p class="q">Forwarding, no branch prediction. 10% of instructions are branches, 70% of branches are conditional, 12% of instructions have a load/use hazard, 2% are <code>ret</code>. CPI?</p>
+  <div class="why"><p>1 + 0.12 × 1 + (0.10 × 0.70) × 2 + 0.02 × 3 = 1 + 0.12 + 0.14 + 0.06 = <strong>1.32</strong>.</p></div>
+</div>
+
+<h2>5 · Putting them together: what actually makes a program fast</h2>
+
+<div class="callout key">
+  <span class="label">The iron law</span>
+  time = instructions × CPI × clock period
+</div>
+
+<p>Most “always / sometimes / never” questions are traps where one factor improves and another gets worse. Check each factor separately:</p>
+<ul>
+  <li><strong>SEQ</strong>: CPI is exactly 1 by design. One instruction per (long) cycle, never more, never fewer.</li>
+  <li><strong>Any pipeline</strong>, ignoring fill: at most one instruction retires per cycle, so cycles ≥ instructions (CPI ≥ 1). It's equal only when no bubble is ever inserted.</li>
+  <li><strong>More stages</strong>: a shorter clock (the first factor improves), but the stall and misprediction penalties grow in cycles (the CPI factor gets worse). Which effect wins depends on the program.</li>
+</ul>
+
+<div class="callout">
+  <span class="label">How this course grades these (Lab 4 answer key)</span>
+  <strong>will always / will never</strong> only when it's true <em>by definition</em> (e.g. SEQ uses exactly one cycle per instruction). <strong>is likely / unlikely to</strong> for design trends that usually hold but aren't guaranteed for <em>any</em> two implementations. A pipeline's clock is <em>likely</em> shorter than SEQ's, and more stages <em>likely</em> means a shorter clock. <strong>None</strong> when the answer is “could be equal, could be more” and there's no “at least as many” option: a hazard-free program gives cycles = instructions, so “all programs take more cycles” fails.
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q">On PIPE with forwarding, can a program that <em>has</em> a data hazard run in exactly as many cycles as instructions (ignoring fill)?</p>
+  <ol class="opts"><li>No, never possible</li><li>Yes, it is possible</li><li>Only without jumps</li><li>Only with load/use</li></ol>
+  <div class="why"><p>Yes. <code>addq %rax,%rbx</code> then <code>subq %rbx,%rcx</code> is a data hazard, and forwarding <code>e_valE</code> removes it with 0 bubbles. Only load/use (or control hazards) still add cycles. Not every hazard costs a cycle; only the bubbles count.</p></div>
+</div>
+
+<div class="quiz" data-answer="3">
+  <p class="q">Design A has a 100 ps clock and runs a program at CPI 1.5. Design B has a 120 ps clock and runs it at CPI 1.2. Which finishes first?</p>
+  <ol class="opts"><li>A, shorter clock</li><li>A, by 6 ps per instruction</li><li>They finish together</li><li>B, by 6 ps per instruction</li></ol>
+  <div class="why"><p>A: 1.5 × 100 = 150 ps per instruction. B: 1.2 × 120 = 144 ps. <strong>B</strong> wins despite the slower clock. That's the trap in “a shorter cycle time always means faster.”</p></div>
+</div>
+
+<h2>6 · Practice until it's boring</h2>
+
+<p><strong>Latency and throughput.</strong> Random register and stage delays, sometimes unbalanced. Aim for 5 in a row with no calculator except for the final division.</p>
+<div id="drill-timing"></div>
+
+<p><strong>CPI word problems.</strong> Read the percentages carefully; most mistakes come from the nesting.</p>
+<div id="drill-cpi"></div>
+
+<p><strong>Interleave.</strong> Finish with 3 problems from the <a href="0002-control-hazards-branch-prediction.html">lost-cycles drill</a>. It now has a <em>FTBNT</em> option (forward taken, backward not taken), the reversed predictor in I11.1.</p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <strong>CS:APP 3e §4.4.1–4.4.3</strong> (“Computational Pipelines”, “Limitations of Pipelining”: nonuniform partitioning and diminishing returns) and <strong>§4.5.9</strong> (“Performance Analysis”: the CPI = 1 + lp + mp + rp worked example). <a href="https://csapp.cs.cmu.edu/">csapp.cs.cmu.edu</a>.
+</div>
+
+<div class="callout key">
+  <span class="label">Spacing</span>
+  In two days, redo the §3 table from memory: just the four rows, numbers only. If you can regenerate it, you own the formulas.
+</div>
+
+<p class="ask">Something not adding up, like a lab number that disagrees with these formulas? Paste it to me in the terminal. Course conventions occasionally differ from the book, and I'd want to know.</p>
+
+<nav class="lesson-nav">
+  <a href="0005-pipeline-snapshots.html">← Lesson 5: Pipeline snapshots</a>
+  <a href="../reference/0001-pipeline-hazards-cheatsheet.html">Cheat sheet</a>
+</nav>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/perf.js"></script>
+<script>
+  Perf.timing(document.getElementById('drill-timing'));
+  Perf.cpi(document.getElementById('drill-cpi'));
+</script>
+</body>
+</html>

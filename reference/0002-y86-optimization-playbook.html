@@ -23,7 +23,7 @@
 </header>
 
 <h2>The equation</h2>
-<p style="text-align:center"><em>cycles</em> ≈ <em>instructions executed</em> + <em>bubbles</em> (+ 4 to fill the pipeline) · CPI = (<em>instr</em> + <em>bubbles</em>) / <em>instr</em></p>
+<p style="text-align:center"><em>cycles</em> ≈ <em>instructions executed</em> + <em>bubbles</em> (+ 4 to fill the pipeline) · CPI = (<em>instr</em> + 4 + <em>bubbles</em>) / <em>instr</em> (slides 2.5)</p>
 <p>Two independent levers: <strong>fewer bubbles</strong> and <strong>fewer instructions</strong>. Always compare <strong>cycles</strong>. Cutting a stall-free instruction raises CPI but still saves time. Spend effort where code runs most (inner loops), because a cycle saved there is saved <em>n</em> times.</p>
 
 <h2>What still costs cycles (forwarding + BTFNT)</h2>

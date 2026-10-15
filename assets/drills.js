@@ -17,7 +17,8 @@
 
   var PREDICT_LABEL = {
     none: 'no branch prediction', never: 'predict never taken',
-    always: 'predict always taken', btfnt: 'predict backward taken, forward not taken'
+    always: 'predict always taken', btfnt: 'predict backward taken, forward not taken',
+    ftbnt: 'predict forward taken, backward not taken'
   };
 
   // ------------------------------------------------------------------ forwarding drill
@@ -44,7 +45,7 @@
       var cons = pick(['addq %' + reg + ', %r14', 'subq %' + reg + ', %r14', 'rmmovq %' + reg + ', 0(%r14)', 'rrmovq %' + reg + ', %r14']);
       lines.push(cons);
       var res = Y.simulate(Y.parse(lines.join('\n')), { forwarding: fwd, predict: 'none' });
-      var last = res.rows[res.rows.length - 1];
+      var last = res.rows[lines.length - 1];   // consumer row (rows also include the implicit halt)
       var m = (last.fwd[0] || '').match(/← (\w+)/);
       var src = m ? m[1] : 'register file';
       var stalls = res.dataStalls;
@@ -110,7 +111,7 @@
     el.innerHTML =
       '<div class="row no-print" style="margin-bottom:.6rem">' +
       '<label>Forwarding <select class="f"><option value="rand">random</option><option value="1">on</option><option value="0">off</option></select></label>' +
-      '<label>Prediction <select class="p"><option value="rand">random</option><option value="none">none</option><option value="never">never taken</option><option value="always">always taken</option><option value="btfnt">BTFNT</option></select></label>' +
+      '<label>Prediction <select class="p"><option value="rand">random</option><option value="none">none</option><option value="never">never taken</option><option value="always">always taken</option><option value="btfnt">BTFNT</option><option value="ftbnt">FTBNT (reverse)</option></select></label>' +
       '<label>Shape <select class="k"><option value="rand">random</option><option value="if">if (I10-style)</option><option value="loop">loop (P9.2-style)</option></select></label>' +
       '</div><div class="quiz drill"></div>';
     var card = el.querySelector('.quiz');
@@ -144,7 +145,7 @@
           res.controlStalls + ' control-stall + ' + res.squashed + ' squashed.</p>' +
           (lines.length ? '<ul>' + lines.map(function (l) { return '<li><code>' + esc(l.split(' — ')[0]) + '</code> — ' + esc(l.split(' — ').slice(1).join(' — ')) + '</li>'; }).join('') + '</ul>' : '<p>No hazards cost anything here.</p>') +
           (res.notes.length ? '<p class="muted">' + res.notes.map(esc).join('<br>') + '</p>' : '') +
-          '<p class="muted">' + res.instructions + ' instructions (incl. halt) · CPI = (' + res.instructions + ' + ' + res.lost + ') / ' + res.instructions + ' ≈ ' + res.cpi.toFixed(2) + '</p>' +
+          '<p class="muted">' + res.instructions + ' instructions (incl. halt) · CPI = (' + res.instructions + ' + 4 fill + ' + res.lost + ') / ' + res.instructions + ' ≈ ' + ((res.instructions + 4 + res.lost) / res.instructions).toFixed(2) + ' (slides 2.5 count the 4 fill cycles)</p>' +
           '<div class="diagram"></div>' + LEGEND +
           '<p class="muted">Score: ' + score.right + ' / ' + score.total + '</p>' +
           '<button class="btn nx" type="button">Next problem →</button>';
@@ -165,7 +166,7 @@
       '<textarea class="src" spellcheck="false" style="width:100%;min-height:14rem;font-family:var(--mono);font-size:.85rem;background:var(--code-bg);color:var(--ink);border:1px solid var(--rule);border-radius:4px;padding:.6rem"></textarea>' +
       '<div class="row" style="margin:.5rem 0">' +
       '<label><input type="checkbox" class="f" checked> forwarding</label>' +
-      '<label>Prediction <select class="p"><option value="none">none</option><option value="never">never taken</option><option value="always">always taken</option><option value="btfnt">BTFNT</option></select></label>' +
+      '<label>Prediction <select class="p"><option value="none">none</option><option value="never">never taken</option><option value="always">always taken</option><option value="btfnt">BTFNT</option><option value="ftbnt">FTBNT (reverse)</option></select></label>' +
       '<button class="btn run" type="button">Run</button></div><div class="out"></div>';
     var ta = el.querySelector('.src');
     ta.value = initial || '';

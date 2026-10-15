@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Problem Workout</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 8 · Quiz 2 prep · I11 / P10.2 / R2.4–R2.10</div>
+  <h1>Pipeline Problem Workout</h1>
+  <p class="subtitle">How to count stalls, squashes and CPI for a whole program with loops, using one procedure that works every time.</p>
+</header>
+
+<p><strong>Your win for today:</strong> given a 10–20 line loop program and a pipeline (stalling or forwarding, plus a predictor), produce the data stalls, squashed instructions, control stalls and CPI, and get them right. That's I11.1, I11.2, I11.4 and the questions your classmates will answer about your P10.2 program. The last section fixes the R2.4 slip ("which register holds what") in five minutes. About 45 minutes. Work with paper beside you.</p>
+
+<h2>Warm-up: interleaved recall</h2>
+
+<div class="quiz" data-answer="2">
+  <p class="q">From Lesson 7: which instruction writes <em>two</em> registers in Write-back?</p>
+  <ol class="opts"><li><code>pushq</code></li><li><code>mrmovq</code></li><li><code>popq</code></li><li><code>call</code></li></ol>
+  <div class="why"><p><code>popq rA</code>: <code>R[%rsp] = valE</code> <em>and</em> <code>R[rA] = valM</code>. That's why a <code>popq</code> can cause a hazard on <code>%rsp</code> as well as on rA. Both I11.2 and R2.9 rely on it.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q">Which register does <code>andq %rsi, %rsi</code> write?</p>
+  <ol class="opts"><li>None, it only sets the condition codes</li><li><code>%rsi</code></li><li><code>%rax</code></li></ol>
+  <div class="why"><p>Every OPq writes <code>R[rB] = valE</code>, even when it's used purely as a test. This matters in your own P10.2 program (section 5).</p></div>
+</div>
+
+<h2>1 · The whole rulebook on one card</h2>
+
+<p>Everything below is from slides 2.3–2.5 and the I11 answer keys. These rules reproduce those keys exactly.</p>
+
+<div class="callout key">
+  <span class="label">Data hazards: count the slots, not the lines</span>
+  <p><strong>Distance</strong> = how many pipeline slots the reader is behind the writer. Every instruction in between counts, and so does every bubble: earlier stalls and squashed wrong-path instructions included.</p>
+  <ul>
+    <li><strong>No forwarding (stalling):</strong> distance 1 → <strong>3</strong> stalls, 2 → <strong>2</strong>, 3 → <strong>1</strong>, 4+ → 0.</li>
+    <li><strong>Forwarding:</strong> only <strong>load → use at distance 1</strong> costs anything: <strong>1</strong> stall. A load is <code>mrmovq</code>, or <code>popq</code> for its rA. Everything else is free.</li>
+    <li>If several registers are late, the instruction stalls for the <em>worst</em> one only. Stalls don't add.</li>
+  </ul>
+  <p><strong>Who writes what:</strong> OPq, rrmovq, irmovq and cmovXX write rB. mrmovq writes rA. popq writes rA <em>and</em> %rsp. pushq, call and ret write %rsp. rmmovq and jumps write nothing. Only <em>read-after-write</em> is a hazard: two writes to the same register, or a write after a read, cost nothing. Condition codes never stall.</p>
+</div>
+
+<div class="callout key">
+  <span class="label">Control hazards</span>
+  <ul>
+    <li><strong>Conditional jump, no prediction:</strong> <strong>2 stall cycles every time</strong>, taken or not. These are <em>control</em> stalls.</li>
+    <li><strong>Conditional jump with a predictor:</strong> 0 if the guess was right, otherwise <strong>2 squashed instructions</strong>. Squashes are not stalls, so the quiz asks for them separately.</li>
+    <li><strong><code>jmp</code> and <code>call</code>: 0 always.</strong> The target is valC, known in Fetch. A <code>jmp</code> is never "mispredicted".</li>
+    <li><strong><code>ret</code>: 3</strong> control stalls.</li>
+  </ul>
+</div>
+
+<div class="callout key">
+  <span class="label">CPI for a whole program (slides 2.5)</span>
+  <p><strong>cycles = instructions + 4 + data stalls + control stalls + squashed</strong>, and <strong>CPI = cycles / instructions</strong>.</p>
+  <p>Instructions = instructions <em>executed</em>, counting the final <code>halt</code> and not counting squashed ones. The 4 fills the pipeline. The slides' own examples are 71/37 (no forwarding, no prediction) and 43/37 (forwarding, never taken: 37 + 4 + 2).</p>
+  <p>The exception: an <em>instruction-mix</em> question like I11.3 ("8% are branches…") says “ignore startup”. There it's CPI = 1 + Σ fraction × penalty, with no +4.</p>
+</div>
+
+<h2>2 · The procedure (the course's “tips for peer problems”, made concrete)</h2>
+
+<ol>
+  <li><strong>Trace the values. Don't skip this.</strong> Write the loop registers in a small table, one row per iteration, until the exit jump is taken. The result is two numbers: how many iterations, and which jumps are taken in which iteration. Most wrong answers start here.</li>
+  <li><strong>Cut the code into basic blocks</strong>: straight-line runs that execute the same number of times. Typically: setup (×1), loop body (×N), any skip-able piece (×k), tail (×1).</li>
+  <li><strong>Data stalls, per block, in two passes.</strong> For the <em>first</em> iteration the writers are the setup instructions. For <em>later</em> iterations the writers are from the previous iteration, reached around the back edge. Count the jump, the <code>jmp</code>, and any squashed or stalled slots in the distance. First and later iterations often differ, which is why answer keys say “1 stall … / 2 stalls … (8 times)”.</li>
+  <li><strong>Control.</strong> For each conditional jump, compare the outcome in each iteration with the predictor's guess. Unconditional <code>jmp</code>s cost nothing.</li>
+  <li><strong>Add up and count instructions.</strong> Instructions = setup + Σ (block size × times run) + tail + <code>halt</code>.</li>
+</ol>
+
+<h2>3 · Worked: I11.2 (the one you got 26 on)</h2>
+
+<pre><code> 7:  loop_start:  rrmovq %rax, %rdi       irmovq 1, %rax   (line 2)
+ 8:               addq   %rcx, %rax       irmovq 7, %rbx   (line 3)
+ 9:               rrmovq %rbx, %rbp       irmovq 1, %rcx   (line 4)
+10:               subq   %rdi, %rbp
+11:               jle    loop_end         no forwarding, predict never taken
+12:               jmp    loop_start
+15:  loop_end:    popq %r10 · 16: addq %r8, %r11 · 17: popq %r10 · 18: divq %r9, %r12</code></pre>
+
+<p><strong>Step 1, trace.</strong> <code>%rbp = 7 − %rdi</code>, and <code>jle</code> is taken when that's ≤ 0:</p>
+<div class="scroll-x"><table class="trace">
+  <tr><th>iteration</th><td class="n">1</td><td class="n">2</td><td class="n">3</td><td class="n">4</td><td class="n">5</td><td class="n">6</td><td class="n">7</td></tr>
+  <tr><th>%rdi</th><td class="n">1</td><td class="n">2</td><td class="n">3</td><td class="n">4</td><td class="n">5</td><td class="n">6</td><td class="n">7</td></tr>
+  <tr><th>%rbp = 7 − %rdi</th><td class="n">6</td><td class="n">5</td><td class="n">4</td><td class="n">3</td><td class="n">2</td><td class="n">1</td><td class="n">0</td></tr>
+  <tr><th>jle</th><td>no</td><td>no</td><td>no</td><td>no</td><td>no</td><td>no</td><td><strong>taken</strong></td></tr>
+</table></div>
+
+<p><strong>Step 3, data stalls.</strong></p>
+<ul>
+  <li><strong>Line 7, iteration 1:</strong> <code>%rax</code> comes from line 2, which is 3 slots back (lines 2, 3, 4, then 7). That's <strong>1</strong> stall.</li>
+  <li><strong>Line 8, iteration 1:</strong> <code>%rcx</code> comes from line 4. Line 7 plus its 1 bubble put it at distance 3: <strong>1</strong> stall. Notice how the earlier stall shrank this one.</li>
+  <li><strong>Line 10, every iteration:</strong> <code>%rbp</code> comes from the line right above it, distance 1: <strong>3</strong> stalls × 7 = 21. (<code>%rdi</code> is also late, but it's less late, so the stalls don't add.)</li>
+  <li><strong>Line 7, iterations 2–7:</strong> <code>%rax</code> comes from line 8 of the previous iteration. Lines 9, 10 (+3 bubbles), 11 and 12 are in between, which is far enough: 0.</li>
+  <li><strong>Line 17:</strong> <code>popq</code> reads <code>%rsp</code>, which line 15's <code>popq</code> wrote 2 slots earlier: <strong>2</strong> stalls. The repeated <code>%r10</code> is write-after-write, so it's not a hazard.</li>
+</ul>
+<p>Total 1 + 1 + 21 + 2 = <strong>25</strong>.</p>
+<p><strong>Step 4, control.</strong> “Never taken” is right 6 times and wrong once (iteration 7): <strong>2 squashed</strong>. <code>jmp</code> costs 0.</p>
+
+<div class="callout">
+  <span class="label">Where a 26 usually comes from</span>
+  You probably added one stall too many in one of these places: (a) line 8 counted as 2 because you forgot that line 7's bubble also delays line 8; (b) line 17 counted as 3 by treating it as adjacent to line 15, when line 16 sits between them; (c) a stall on line 7 in a <em>later</em> iteration. Check which one you did. It tells you which rule to drill.
+</div>
+
+<p>For completeness: instructions = 3 + 7×5 + 6 <code>jmp</code>s + 4 tail + <code>halt</code> = 49, so CPI = (49 + 4 + 25 + 2)/49 = 80/49 ≈ 1.63.</p>
+
+<h2>4 · Your turn: I11.4 (the peer problem)</h2>
+
+<pre><code>    irmovq $5, %rbx          loop:  addq   %rax, %r8
+    irmovq $-1, %rax                je     End
+    irmovq list, %rdi               mrmovq 0(%rdi), %r9
+    irmovq $8, %rsi                 rrmovq %r11, %r10
+    irmovq $100000, %r11            subq   %r9, %r10
+    rrmovq %rbx, %r8                cmovg  %r9, %r11
+                                    addq   %rsi, %rdi
+    list: 5, 10, 13, 2, 5           jmp    loop
+                             End:   rrmovq %r11, %rax
+                                    halt</code></pre>
+<p>Stalling (no forwarding) and <strong>predict always taken</strong>. Do steps 1–5 on paper before you check any answer.</p>
+
+<div class="quiz numeric" data-answer="4">
+  <p class="q">Step 1: how many times does the loop body (<code>mrmovq</code> … <code>jmp</code>) run?</p>
+  <div class="why"><p><code>%r8</code> starts at 5, and each pass adds −1: 4, 3, 2, 1, 0. <code>je End</code> is taken on the 5th test, so the body runs <strong>4</strong> times and only touches <code>list[0..3]</code>. What the program computes (the min, 2) doesn't matter here.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="8">
+  <p class="q">How many instructions are squashed?</p>
+  <div class="why"><p><code>je</code> is guessed taken every time, but it's actually <em>not</em> taken in 4 of its 5 executions, so 4 × 2 = <strong>8</strong>. The <code>jmp</code> never squashes.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="15">
+  <p class="q">How many cycles does the processor stall due to data hazards?</p>
+  <div class="why">
+    <p><strong>15</strong> = 3 + 4 × 3:</p>
+    <ul>
+      <li><code>addq %rax, %r8</code> in the first pass: <code>%r8</code> was written by the line directly above (<code>rrmovq %rbx, %r8</code>). That's <strong>3</strong>. In later passes its writer is the previous <code>addq</code>, far away.</li>
+      <li><code>subq %r9, %r10</code>: <code>%r10</code> was written by the line directly above, <strong>3</strong> × 4. <code>%r9</code> (distance 2, so 2 stalls) is hidden inside that wait.</li>
+      <li><code>cmovg</code> reads <code>%r9</code> after the wait, so it's free. Its condition codes are never a hazard.</li>
+      <li><code>mrmovq 0(%rdi)</code> reads the <code>%rdi</code> from the previous pass: <code>addq</code>, <code>jmp</code>, <code>addq</code>, <code>je</code>, then 2 squashed slots. Far.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="quiz numeric" data-answer="0">
+  <p class="q">How many cycles does the processor stall due to control hazards?</p>
+  <div class="why"><p><strong>0.</strong> With a predictor, jumps cost squashes, not stalls, and there's no <code>ret</code>.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="1.64" data-tol="0.045">
+  <p class="q">CPI (2 significant figures)?</p>
+  <div class="why"><p>Instructions = 6 setup + 4 × 8 body + final <code>addq</code>, <code>je</code> + <code>rrmovq</code>, <code>halt</code> = <strong>42</strong>. Cycles = 42 + 4 + 15 + 0 + 8 = 69. CPI = 69/42 ≈ <strong>1.6</strong>.</p></div>
+</div>
+
+<h2>5 · Your own P10.2 program</h2>
+
+<p>I ran your <code>sum_positive_array.ys</code>. It halts with <code>%rax = 22</code>, as your comment says. Your two annotated hazards (load-use on <code>%rsi</code>, and <code>jle</code> under never-taken) are exactly the ones that cost cycles. Now answer the questions your classmates will get: forwarding + stalling, predict never taken.</p>
+
+<pre><code>loop_start:  andq   %rdx, %rdx        skip_add:  addq %r9, %rcx
+             je     loop_end                     subq %r8, %rdx
+             mrmovq 0(%rcx), %rsi                jmp  loop_start
+             andq   %rsi, %rsi        loop_end:  halt
+             jle    skip_add
+             addq   %rsi, %rax        array: 15, -5, 0, 7    (5 irmovq setup lines)</code></pre>
+
+<div class="quiz numeric" data-answer="6">
+  <p class="q">How many instructions will be squashed?</p>
+  <div class="why"><p><code>jle skip_add</code> is taken for −5 and 0: 2 mispredictions. <code>je loop_end</code> is taken once, at the end: 1 misprediction. Total 3 × 2 = <strong>6</strong>.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="4">
+  <p class="q">With forwarding, how many cycles does it stall due to data hazards?</p>
+  <div class="why"><p>With forwarding only load → use costs anything: <code>mrmovq … %rsi</code> followed immediately by <code>andq %rsi, %rsi</code>, 1 × 4 iterations = <strong>4</strong>. (<code>subq %r8, %rdx</code> → <code>jmp</code> → <code>andq %rdx, %rdx</code> is forwarded for free.)</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="1.33" data-tol="0.006">
+  <p class="q">CPI (remember the <code>halt</code>)?</p>
+  <div class="why"><p>Instructions = 5 + (9 + 8 + 8 + 9) + final <code>andq</code>, <code>je</code> + <code>halt</code> = <strong>42</strong> (iterations with 15 and 7 run the <code>addq</code>, so they're 9 long). Cycles = 42 + 4 + 4 + 6 = 56. CPI = 56/42 ≈ <strong>1.33</strong>.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="24">
+  <p class="q">Harder: the same program on the <em>stalling-only</em> pipeline (no forwarding). How many data-stall cycles?</p>
+  <div class="why">
+    <p><strong>24</strong>, from three sources:</p>
+    <ul>
+      <li><code>andq %rsi, %rsi</code> right after the load: 3 × 4 = 12.</li>
+      <li><code>addq %rsi, %rax</code>: <code>%rsi</code> was last written by <code>andq %rsi, %rsi</code> (OPq writes rB!), 2 slots back (with <code>jle</code> in between): 2 × 2 runs = 4.</li>
+      <li><code>andq %rdx, %rdx</code> after <code>subq %r8, %rdx</code>; <code>jmp</code>: distance 2, so 2 × 4 = 8. The first <code>andq</code> is far from the setup.</li>
+    </ul>
+    <p>This is the trap a classmate would hit. The <code>jmp</code> counts as a slot, and the test <code>andq</code> is a <em>writer</em>.</p>
+  </div>
+</div>
+
+<h2>6 · Unlimited I11-style programs</h2>
+
+<p>Each program is generated in one of the four shapes you've seen: count-down with a backward <code>jg</code> (I11.1), count-up with <code>jle</code>/<code>jmp</code> (I11.2), and test-at-top over an array, with or without an inner <code>if</code> (I11.4, P10.2). After the loop comes a tail with its own hazards. You answer six numbers. The feedback shows the breakdown in the answer-key format, plus the pipeline diagram.</p>
+
+<div class="callout">
+  <span class="label">How to use it</span>
+  Fix <em>Forwarding = no</em> and <em>Prediction = none</em> first, so every rule is in play. Then move through the predictors. Your target: <strong>3 programs in a row with all six right.</strong> When a number is wrong, find its line in the breakdown before moving on, because that line is the rule you're missing.
+</div>
+
+<div id="drill-workout"></div>
+
+<h2>7 · Who holds what: R2.4, R2.5, R2.9, R2.10</h2>
+
+<div class="callout key">
+  <span class="label">Three facts answer all of these</span>
+  <ol>
+    <li><strong>Staircase:</strong> with no stalls, if instruction <em>i</em> is in stage S, then <em>i</em>+1 is one stage behind and <em>i</em>−1 one stage ahead.</li>
+    <li><strong>Naming:</strong> <code>E_dstM</code> (capital) is the pipeline register at the <em>start</em> of Execute, holding the instruction <em>now in</em> Execute. <code>d_dstM</code> (lowercase) is the signal <em>computed in</em> Decode by the instruction now in Decode. Either way, the name points at the instruction <em>in that stage</em>.</li>
+    <li><strong>If that instruction isn't in the question, the answer is NONE.</strong></li>
+  </ol>
+</div>
+
+<p><strong>Your R2.4 miss, explained.</strong> First instruction in Memory → second in Execute → <em>third</em> in Decode. The question shows only two instructions, so <code>d_dstM</code> belongs to an unknown instruction: <strong>NONE</strong>. You answered <code>%r10</code>, the second instruction's dstM, which actually sits in <code>E_dstM</code> at that moment. Your variant-2 answer (<code>E_dstM = %r8</code>) shows you have the staircase right. The error was naming the wrong stage.</p>
+
+<div class="quiz" data-answer="3">
+  <p class="q"><code>mrmovq 8(%rbx), %rdi</code> then <code>addq %rdi, %rsi</code>. When the <code>mrmovq</code> is in Write-back, what is in <code>M_dstE</code>?</p>
+  <ol class="opts"><li><code>%rdi</code></li><li><code>%rsi</code></li><li><code>%rbx</code></li><li>NONE</li></ol>
+  <div class="why"><p><code>addq</code> uses the loaded <code>%rdi</code> immediately, so even with forwarding it's held in Decode for 1 cycle while a <em>bubble</em> goes into Execute. When <code>mrmovq</code> reaches W, the stage just behind it (M) holds that bubble, and a bubble's dstE is NONE. Without forwarding there are 3 bubbles, and the answer is still NONE. The trap is skipping the stall check and answering <code>%rsi</code>. Ask “is there a stall?” before you walk the staircase.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">R2.9 shape: <code>popq %r12</code>; <code>nop</code>; <code>xorq %r12, %rax</code>. With forwarding, where does the <code>xorq</code> get <code>%r12</code>, with no stall?</p>
+  <ol class="opts"><li><code>W_valM</code></li><li><code>M_valE</code></li><li><code>m_valM</code></li><li>It must stall</li></ol>
+  <div class="why"><p>When <code>xorq</code> is in Decode, <code>popq</code> is 2 ahead, in Memory, reading the value <em>right now</em>, so <strong><code>m_valM</code></strong>. (<code>%r12</code> is the popped value, so it travels via valM. valE is the new <code>%rsp</code>.) Distance 1 would be impossible (stall). Distance 3 would be <code>W_valM</code>. Distance 4+ comes from the register file.</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="2">
+  <p class="q">R2.10 shape, PIPE- (no hazard handling): <code>rrmovq %rbx, %rax</code>; <code>addq %r11, %rsi</code>; <code>mrmovq 0x5269(%rax), %r11</code>. How many nops before line 3?</p>
+  <div class="why"><p>nops = 3 − (instructions already between). One instruction is between, so <strong>2</strong>. It's the same table as stalling, just paid in nops.</p></div>
+</div>
+
+<p>Random drill (Lesson 5's, now with <code>d_</code> signals and the NONE trap):</p>
+<div id="drill-stage"></div>
+
+<h2>8 · Instruction-mix CPI (I11.3)</h2>
+<p>You had 2/4 here. The key's formula, with its three penalties: <strong>CPI = 1 + (load/use fraction × 1) + (conditional-branch fraction × 2 × miss rate) + (ret fraction × 3)</strong>. With no predictor the miss rate is 1, since every conditional branch pays. Watch the nested percentage: “8% are branches, 65% of <em>those</em> are conditional” means 0.08 × 0.65. With forwarding, only the “hazard that can't be avoided by forwarding” fraction pays the 1.</p>
+<div id="drill-cpi"></div>
+
+<h2 id="src">Sources</h2>
+<div class="callout">
+  <span class="label">Course materials</span>
+  Slides <strong>2.5 “Pipeline performance”</strong> (cycle-count method, CPI = 71/37 and 43/37 including the 4 fill cycles, the “PL explanation” answer format, tips for peer problems). Answer keys for <strong>I11.1–I11.3</strong> and <strong>R2.4, R2.5</strong>, pasted by you. Slides <strong>2.3</strong> (forwarding sources) and <strong>2.4</strong> (prediction). <strong>CS:APP 3e §4.5.5–4.5.9</strong>. The drill's solver reproduces I11.1 (22 / 16), I11.2 (25 / 2) and both slide examples exactly.
+</div>
+
+<div class="callout key">
+  <span class="label">Spacing</span>
+  Tomorrow, cold: redo I11.2 on paper from the program alone, then do two generated programs with no forwarding and no prediction. If both come out clean, the counting skill is solid.
+</div>
+
+<p class="ask">Paste me your numbers for I11.4, or any program you get wrong in the drill, and I'll find the exact rule that slipped.</p>
+
+<nav class="lesson-nav">
+  <a href="0007-encoding-and-seq-stages.html">← Lesson 7: Bytes, stages &amp; new instructions</a>
+  <a href="../reference/0001-pipeline-hazards-cheatsheet.html">Cheat sheet</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/snapshot.js"></script>
+<script src="../assets/perf.js"></script>
+<script src="../assets/workout.js"></script>
+<script>
+  Workout.problem(document.getElementById('drill-workout'));
+  Snapshot.stage(document.getElementById('drill-stage'));
+  Perf.cpi(document.getElementById('drill-cpi'));
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@
  *                  (data-answer is the 0-based index of the right option)
  * Multi-select:    same, with data-answer="0,3" — adds a "Check" button.
  * Numeric:         <div class="quiz numeric" data-answer="28"> <p class="q">…</p> <div class="why">…</div></div>
+ *                  (optional data-tol="0.005": accept answers within ± tol, e.g. for 2-decimal rounding)
  *
  * Quiz.mount(root) wires up every .quiz under root (called automatically on load).
  */
@@ -68,6 +69,7 @@
     row.className = 'row';
     var input = document.createElement('input');
     input.type = 'number';
+    input.step = 'any';
     var btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'btn'; btn.textContent = 'Check';
     row.appendChild(input); row.appendChild(btn);
@@ -75,7 +77,8 @@
     box.insertBefore(row, why);
     function go() {
       if (input.value === '') return;
-      verdict(box, Number(input.value) === Number(box.dataset.answer));
+      var tol = Number(box.dataset.tol || 0);
+      verdict(box, Math.abs(Number(input.value) - Number(box.dataset.answer)) <= tol + 1e-9);
       input.disabled = true; btn.disabled = true;
     }
     btn.addEventListener('click', go);

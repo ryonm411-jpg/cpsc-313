@@ -158,7 +158,7 @@
     return [];
   }
 
-  /* Run the program. opts.forwarding: bool. opts.predict: 'none'|'never'|'always'|'btfnt'. */
+  /* Run the program. opts.forwarding: bool. opts.predict: 'none'|'never'|'always'|'btfnt'|'ftbnt' (forward taken, backward not). */
   function simulate(prog, opts) {
     opts = opts || {};
     var fwd = opts.forwarding !== false;
@@ -210,7 +210,7 @@
         dataStalls += stall;
         var w = why.reduce(function (a, b) { return b.need >= a.need ? b : a; });
         events.push({
-          kind: 'data', cycles: stall, at: ins.text,
+          kind: 'data', cycles: stall, at: ins.text, idx: ins.idx, reg: w.r,
           detail: (fwd && w.p.kind === 'M' ? 'load/use hazard' : 'data hazard') +
             ' on %' + w.r + ' (written by ' + w.p.text + ')'
         });
@@ -265,16 +265,17 @@
       if (op === 'ret') {
         nextF = E + 2;
         controlStalls += 3;
-        events.push({ kind: 'control', cycles: 3, at: ins.text, detail: 'ret: return address not known until ret reaches Write-back' });
+        events.push({ kind: 'control', cycles: 3, at: ins.text, idx: ins.idx, detail: 'ret: return address not known until ret reaches Write-back' });
       } else if (JXX[op] && op !== 'jmp') {
         var taken = cond(op, cc);
         if (taken) next = ins.targetIdx;
         var guess = predict === 'never' ? false : predict === 'always' ? true
+          : predict === 'ftbnt' ? ins.targetIdx > ins.idx
           : predict === 'btfnt' ? ins.targetIdx <= ins.idx : null;
         nextF = E + 1;
         if (guess === null) {
           controlStalls += 2;
-          events.push({ kind: 'control', cycles: 2, at: ins.text, detail: 'no prediction: stall until the outcome (' + (taken ? 'taken' : 'not taken') + ') is known' });
+          events.push({ kind: 'control', cycles: 2, at: ins.text, idx: ins.idx, taken: taken, detail: 'no prediction: stall until the outcome (' + (taken ? 'taken' : 'not taken') + ') is known' });
         } else if (guess !== taken) {
           squashed += 2;
           var wrong = guess ? ins.targetIdx : ins.idx + 1;
@@ -282,10 +283,10 @@
             var wi = instrs[wrong + k];
             rows.push({ text: wi ? wi.text : '(past end)', F: E - 1 + k, D: k === 0 ? E : null, squashed: true });
           });
-          events.push({ kind: 'squash', cycles: 2, at: ins.text, detail: 'mispredicted (guessed ' + (guess ? 'taken' : 'not taken') + ', actually ' + (taken ? 'taken' : 'not taken') + '): 2 instructions squashed' });
+          events.push({ kind: 'squash', cycles: 2, at: ins.text, idx: ins.idx, taken: taken, detail: 'mispredicted (guessed ' + (guess ? 'taken' : 'not taken') + ', actually ' + (taken ? 'taken' : 'not taken') + '): 2 instructions squashed' });
         } else {
           nextF = Dstart;
-          events.push({ kind: 'ok', cycles: 0, at: ins.text, detail: 'predicted correctly (' + (taken ? 'taken' : 'not taken') + ')' });
+          events.push({ kind: 'ok', cycles: 0, at: ins.text, idx: ins.idx, taken: taken, detail: 'predicted correctly (' + (taken ? 'taken' : 'not taken') + ')' });
         }
       }
       // jmp / call: target is valC, known in Fetch -> no penalty

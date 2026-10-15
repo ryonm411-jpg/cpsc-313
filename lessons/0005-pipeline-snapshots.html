@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Snapshots</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 5 · Quiz 2 prep</div>
+  <h1>Pipeline Snapshots</h1>
+  <p class="subtitle">Freeze the pipeline at one clock cycle and read off what is in every stage and every pipeline register.</p>
+</header>
+
+<p><strong>Your win for today:</strong> answer the four practice-quiz question types that the forwarding drills don't cover. Those are <em>“what stage is X in?”</em> (R2.3), <em>“what's in <code>E_dstM</code>?”</em> (R2.4), <em>“what is <code>d_valA</code>?”</em> (R2.5) and <em>“how many nops?”</em> (R2.10). All four use one picture: a staircase. About 15 minutes.</p>
+
+<h2>1 · The staircase</h2>
+
+<p>With no stalls, each instruction enters Fetch one cycle after the one before it. Freeze any cycle and the program sits diagonally across the stages. An instruction <strong>k lines earlier is k stages further along</strong> <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP 3e §4.4, Fig. 4.33</a>.</p>
+
+<div id="dg-stair"></div>
+<p class="legend">Look at cycle 5: <code>irmovq</code> is in W, <code>rrmovq</code> in M, <code>addq</code> in E, <code>subq</code> in D, <code>halt</code> in F.</p>
+
+<p>Most snapshot questions are this staircase plus one fact. Decode is where an instruction <em>reads</em> registers. Write-back is where it <em>writes</em> them.</p>
+
+<div class="quiz" data-answer="4">
+  <p class="q">PIPE- (no hazard handling). When <code>subq</code> reads <code>%rcx</code>, what stage is the <code>rrmovq</code> in?</p>
+  <pre><code>Ln_1:    rrmovq   %rdi, %rcx
+Ln_2:    irmovq   $0xcf8a, %rdx
+Ln_3:    irmovq   $0xd7e, %r10
+Ln_4:    subq     %rcx, %rbx</code></pre>
+  <ol class="opts"><li>Fetch</li><li>Decode</li><li>Execute</li><li>Memory</li><li>Write-back</li></ol>
+  <div class="why"><p><code>subq</code> reads in Decode. <code>rrmovq</code> is 3 lines earlier, so it is 3 stages ahead of D: D → E → M → <strong>W</strong>. It is writing <code>%rcx</code> in that very cycle, and the register file only shows the new value <em>next</em> cycle. So <code>subq</code> reads the stale value. That's why distance 3 is still a hazard in PIPE-.</p></div>
+</div>
+
+<h2>2 · Pipeline registers belong to the instruction <em>in</em> that stage</h2>
+
+<p>Each stage begins with a pipeline register named after it (F, D, E, M, W). An UPPERCASE prefix names a field <em>stored</em> in one: <code>E_dstM</code> is the dstM field of the instruction <strong>currently in Execute</strong> <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.2–4.5.3, Fig. 4.41</a>. So find which instruction is in E, then ask what <em>its</em> dstM is.</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Register</th><th>Fields it holds (PIPE)</th></tr>
+  <tr><td><code>F</code></td><td>predPC</td></tr>
+  <tr><td><code>D</code></td><td>icode, ifun, rA, rB, valC, valP</td></tr>
+  <tr><td><code>E</code></td><td>icode, ifun, valC, valA, valB, dstE, dstM, srcA, srcB</td></tr>
+  <tr><td><code>M</code></td><td>icode, Cnd, valE, valA, dstE, dstM</td></tr>
+  <tr><td><code>W</code></td><td>icode, valE, valM, dstE, dstM</td></tr>
+</table>
+</div>
+<p class="muted">(Also a <code>stat</code> field in D–W; not on this quiz.) Decode works out dstE/dstM from rA/rB, which is why they first appear in E.</p>
+
+<div class="quiz" data-answer="2">
+  <p class="q">Stalling processor. <code>%r14</code> = 0x5000, <code>%rax</code> = 0x1000. When the first instruction is in Memory, what does <code>E_dstM</code> hold?</p>
+  <pre><code>mrmovq 0xe00(%r14), %rbx
+mrmovq 0x400(%rax), %r8</code></pre>
+  <ol class="opts"><li><code>%rbx</code></li><li><code>%rax</code></li><li><code>%r8</code></li><li><code>NONE</code></li></ol>
+  <div class="why"><p>First is in M, so the second (one line later) is one stage behind, in <strong>E</strong>. It's a load into <code>%r8</code>, so its dstM = <code>%r8</code>. No stall happens (the second reads <code>%rax</code>, which the first doesn't write). The register values are a distraction. <code>%rbx</code> is in <code>M_dstM</code>, not <code>E_dstM</code>.</p></div>
+</div>
+
+<h2>3 · What Decode reads, what Write-back writes</h2>
+
+<p>This one table answers every “what is <code>d_valA</code> / <code>E_dstE</code> / …” question. It comes straight from the SEQ stage tables, CS:APP Figs. 4.18–4.21 <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.3.1</a>.</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Instruction</th><th>srcA → valA</th><th>srcB → valB</th><th>dstE (gets valE)</th><th>dstM (gets valM)</th></tr>
+  <tr><td><code>OPq rA, rB</code></td><td>rA</td><td>rB</td><td>rB</td><td>—</td></tr>
+  <tr><td><code>rrmovq rA, rB</code></td><td>rA</td><td>—</td><td>rB</td><td>—</td></tr>
+  <tr><td><code>irmovq V, rB</code></td><td>—</td><td>—</td><td>rB</td><td>—</td></tr>
+  <tr><td><code>rmmovq rA, D(rB)</code></td><td>rA</td><td>rB</td><td>—</td><td>—</td></tr>
+  <tr><td><code>mrmovq D(rB), rA</code></td><td>—</td><td>rB</td><td>—</td><td>rA</td></tr>
+  <tr><td><code>pushq rA</code></td><td>rA</td><td>%rsp</td><td>%rsp</td><td>—</td></tr>
+  <tr><td><code>popq rA</code></td><td>%rsp</td><td>%rsp</td><td>%rsp</td><td>rA</td></tr>
+  <tr><td><code>call Dest</code></td><td>—</td><td>%rsp</td><td>%rsp</td><td>—</td></tr>
+  <tr><td><code>ret</code></td><td>%rsp</td><td>%rsp</td><td>%rsp</td><td>—</td></tr>
+  <tr><td><code>jXX</code>, <code>nop</code>, <code>halt</code></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+</table>
+</div>
+
+<div class="callout">
+  <span class="label">Why does ret / popq read %rsp twice?</span>
+  valA = old <code>%rsp</code> is the <em>address to read</em> (<code>valM ← M8[valA]</code>). valB = old <code>%rsp</code> goes through the ALU to make the <em>new</em> stack pointer (<code>valE ← valB + 8</code>). Two jobs need two copies. <code>pushq</code>/<code>call</code> instead write to <code>M8[valE]</code>, the already-decremented address.
+</div>
+
+<p class="muted">PIPE trap: for <code>call</code> and <code>jXX</code>, there's no srcA, but <code>d_valA</code> isn't empty. The “Sel+Fwd A” block puts <code>valP</code> in it. That way <code>call</code> can push the return address, and a mispredicted <code>jXX</code> can recover the fall-through address (CS:APP §4.5.7).</p>
+
+<div class="quiz" data-answer="3">
+  <p class="q">A <code>ret</code> is in Decode. Which best identifies the value assigned to <code>d_valA</code>?</p>
+  <ol class="opts"><li><code>R[%rbx]</code></li><li><code>valP</code></li><li><code>M8[%rsp]</code></li><li><code>R[%rsp]</code></li></ol>
+  <div class="why"><p><code>ret</code>: srcA = <code>%rsp</code>, so <code>d_valA = R[%rsp]</code>, the address of the return address. (With forwarding it may come from a later stage, but it's still <code>%rsp</code>'s value.) <code>M8[%rsp]</code> is what Memory reads <em>using</em> valA. That becomes valM.</p></div>
+</div>
+
+<h2>4 · PIPE-: counting nops by hand</h2>
+
+<p>No stalling and no forwarding means the <em>programmer</em> must space instructions out. A value written in W can be read in Decode the <strong>next</strong> cycle <a href="../2.3-valueForwarding%20(2).pdf" class="cite">slides 2.3, “Recall stalling”</a>. So the consumer must be at least <strong>4 lines</strong> after the producer:</p>
+
+<div class="callout key">
+  <span class="label">The rule</span>
+  nops needed = 4 − distance (zero if distance ≥ 4). valE or valM makes no difference here, since everything waits for W. Nops you've already inserted <em>count toward later distances</em>.
+</div>
+
+<p>Worked through R2.10:</p>
+<pre><code>Ln_0:  mrmovq 0x43ad(%rsi), %rax
+Ln_1:  mrmovq 0xe2b5(%r8),  %rdi
+Ln_2:  rrmovq %rax, %rbp            # reads %rax from Ln_0: distance 2 → 2 nops
+Ln_3:  mrmovq 0x3c6b(%rdi), %rcx    # reads %rdi from Ln_1: distance 2 + 2 nops = 4 → 0
+Ln_4:  rrmovq %r13, %r10
+Ln_5:  mrmovq 0x4831(%rbx), %rdx
+Ln_6:  rmmovq %r10, 0x439(%r10)     # reads %r10 from Ln_4: distance 2 → 2 nops</code></pre>
+
+<div id="dg-nops"></div>
+<p class="legend">Ln_0–Ln_2 with 2 nops on PIPE- (no forwarding): <code>rrmovq</code> reads <code>%rax</code> the cycle after <code>mrmovq</code>'s W. No stall needed.</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q">PIPE-. How many nops before <code>xorq</code>?</p>
+  <pre><code>mulq   %rsi, %rax
+nop
+xorq   %rax, %r11</code></pre>
+  <ol class="opts"><li>1 nop</li><li>2 nops</li><li>3 nops</li><li>4 nops</li></ol>
+  <div class="why"><p>The existing nop already makes the distance 2. 4 − 2 = <strong>2 more</strong>. (On the forwarding pipeline it would need 0: <code>M_valE</code>.)</p></div>
+</div>
+
+<h2>4½ · When two stages hold the same register</h2>
+
+<p>Freeze the pipeline and several later stages may all be about to write <em>the same</em> register. Decode must take the <strong>newest</strong> value. That's the one from the instruction <em>closest</em> to Decode, since it came latest in program order. So the forwarding logic checks the stages nearest-first <a href="https://csapp.cs.cmu.edu/" class="cite">CS:APP §4.5.7, d_valA HCL</a>:</p>
+
+<ol class="steps">
+  <li><code>d_srcA == e_dstE</code> → <code>e_valE</code></li>
+  <li><code>d_srcA == M_dstM</code> → <code>m_valM</code></li>
+  <li><code>d_srcA == M_dstE</code> → <code>M_valE</code></li>
+  <li><code>d_srcA == W_dstM</code> → <code>W_valM</code></li>
+  <li><code>d_srcA == W_dstE</code> → <code>W_valE</code></li>
+  <li>otherwise → the value from the register file (selectA's output)</li>
+</ol>
+
+<p class="muted">Inside one stage, valM is checked before valE. The only instruction with both a dstE and a dstM is <code>popq</code>. For <code>popq %rsp</code> both are <code>%rsp</code>, and the popped value must win. This order is also the spec for Lab 4's <code>forwardA()</code>: a chain of <code>if</code>s in exactly this order. Before you write it, ask yourself: what should happen when <code>d_srcA</code> is <code>R_NONE</code>, and some stage's dst is <em>also</em> <code>R_NONE</code>?</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q">Forwarding processor, no stalls. Where does the last instruction's valA come from?</p>
+  <pre><code>irmovq $0x7, %rdx
+mrmovq 0(%rsp), %rdx
+irmovq $0x1, %rcx
+rrmovq %rdx, %rsi</code></pre>
+  <ol class="opts"><li><code>W_valE</code></li><li><code>m_valM</code></li><li><code>M_valE</code></li><li><code>W_valM</code></li></ol>
+  <div class="why"><p>Both earlier writers of <code>%rdx</code> are still in flight: <code>irmovq</code> is in W (<code>W_valE</code>) and <code>mrmovq</code> is in M. The <code>mrmovq</code> is newer and is checked first, so <strong><code>m_valM</code></strong> wins. Taking <code>W_valE</code> would read the stale 0x7.</p></div>
+</div>
+
+<h2>5 · Practice until it's boring</h2>
+
+<p><strong>Snapshots.</strong> Endless random programs. Draw the staircase on paper first, then answer. Aim for 8 in a row.</p>
+<div id="drill-stage"></div>
+
+<p><strong>PIPE- nops.</strong> Same format as R2.10, with cumulative answers.</p>
+<div id="drill-nops"></div>
+
+<p><strong>Interleave.</strong> Finish with 5 problems from the <a href="0001-value-forwarding.html#drill">forwarding drill</a>. On the real quiz these types come mixed together.</p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <strong>CS:APP 3e §4.5.2–4.5.3</strong> (“Rearranging the computation stages”, “Inserting pipeline registers”). Fig. 4.41 is the PIPE- diagram you'll get on the quiz. Then <strong>§4.3.2 Figs. 4.18–4.21</strong> for the per-instruction stage computations. <a href="https://csapp.cs.cmu.edu/">csapp.cs.cmu.edu</a>.
+</div>
+
+<div class="callout key">
+  <span class="label">Spacing</span>
+  Tomorrow, before anything new: cover the table in §3 and rebuild the <code>popq</code>, <code>ret</code> and <code>call</code> rows from memory.
+</div>
+
+<p class="ask">Anything unclear, like why <code>call</code>'s valA is valP or how a stall changes the staircase? Ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0004-c-to-fast-y86.html">← Lesson 4: From C to fast y86</a>
+  <a href="../reference/0001-pipeline-hazards-cheatsheet.html">Cheat sheet</a>
+  <a href="0006-latency-throughput-cpi.html">Lesson 6: Latency, throughput &amp; CPI →</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/snapshot.js"></script>
+<script>
+  function show(id, src, opts) { Y86.render(document.getElementById(id), Y86.simulate(Y86.parse(src), opts)); }
+  show('dg-stair', 'irmovq $5, %rax\nrrmovq %rdi, %rcx\naddq %rsi, %rdx\nsubq %r8, %r9', {});
+  show('dg-nops', 'mrmovq 0x43ad(%rsi), %rax\nmrmovq 0xe2b5(%r8), %rdi\nnop\nnop\nrrmovq %rax, %rbp', { forwarding: false });
+  Snapshot.stage(document.getElementById('drill-stage'));
+  Snapshot.nops(document.getElementById('drill-nops'));
+</script>
+</body>
+</html>
