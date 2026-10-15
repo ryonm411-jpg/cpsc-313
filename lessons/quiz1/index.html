@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 1 Retake Prep</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 1 · Quiz 1 retake · separate from Quiz 2</div>
+  <h1>Quiz 1 Retake — Tonight's Plan</h1>
+  <p class="subtitle">Three focused lessons built around the two things you said bit you: reading/writing C↔Y86 (and spotting when the code was changed), and the stack-frame "where do I write, and at what address?" question.</p>
+</header>
+
+<div class="callout key">
+  <span class="label">This is Quiz 1, not Quiz 2</span>
+  These pages are deliberately kept in <code>lessons/quiz1/</code>, away from the pipelining material. Nothing here is about forwarding, hazards, or CPI.
+</div>
+
+<h2>What the quiz tests</h2>
+<p>From the official learning goals, Quiz 1 is the <strong>ISA + implementation</strong> unit:</p>
+<ul>
+  <li>What an ISA is; describe what an instruction does in plain English; write the shorthand form (<code>R[rB] = R[rA] * R[rB]</code>).</li>
+  <li>Map between C and the compiler's assembly; convert C → Y86; describe Y86 in plain English.</li>
+  <li>Calling conventions: define, give an example, write conforming code; set up and tear down a call frame.</li>
+  <li>Assembler directives; assembly ⇄ machine-code byte encoding.</li>
+  <li>The SEQ instruction phases, in order, and the notation for each (<code>valE ← valB + (-8)</code>); reason about a new instruction.</li>
+</ul>
+
+<h2>Study order (about 75 min)</h2>
+<ol class="steps">
+  <li><a href="0001-c-and-y86.html"><strong>Lesson 1 — C ⇄ Y86 and "did it change?"</strong></a> (30 min). Your #1 struggle. Loop shapes, if/else, and a checklist for catching altered assembly.</li>
+  <li><a href="0002-stack-frames-and-arrays.html"><strong>Lesson 2 — Stack frames, arrays & the address question</strong></a> (30 min). Your #2 struggle. Frame layout, array addressing, and the hex "where does the write land" problem with <code>%rbx</code>.</li>
+  <li><a href="0003-review-grab-bag.html"><strong>Lesson 3 — Grab bag</strong></a> (15 min). Calling conventions cheat, directives, shorthand notation, and encoding/SEQ quick review.</li>
+</ol>
+
+<h2>The sheets you get during the quiz</h2>
+<p>Keep these open while you practise so you're used to looking things up on them:</p>
+<ul>
+  <li><strong>y86 Reference</strong> — <a href="../../reference/y86reference (3).pdf">y86reference (3).pdf</a> (encoding table, ifun values, register numbers, semantics).</li>
+  <li><strong>y86 Calling Conventions</strong> — <a href="../../reference/y86-conventions (1).pdf">y86-conventions (1).pdf</a>.</li>
+  <li><strong>y86 sequential implementation diagram</strong> — <a href="../../reference/y86ImplementationDiagram.pdf">y86ImplementationDiagram.pdf</a>.</li>
+</ul>
+
+<p class="ask">Have the actual retake topics or a practice question handy? Paste it in the terminal and we'll work it live.</p>
+
+</main>
+</body>
+</html>

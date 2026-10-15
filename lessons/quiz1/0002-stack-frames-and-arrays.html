@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stack Frames &amp; Arrays</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Quiz 1 · Lesson 2</div>
+  <h1>Stack Frames, Arrays &amp; "Where Does the Write Land?"</h1>
+  <p class="subtitle">The frame layout, how to set one up and tear it down, and the address-arithmetic question that got you last time: given a base pointer in <code>%rbx</code> and an array, work out which instruction to insert, what it is, and the exact hex address it writes to.</p>
+</header>
+
+<p><strong>Your win for today:</strong> one formula — <code>address = base + index × 8</code> — done in <em>hex</em>, plus a clear mental picture of where the saved registers and return address sit relative to a local array. That's the whole "smash" question.</p>
+
+<h2>Part A · The stack grows down</h2>
+
+<p>The Y86 stack grows toward <strong>lower</strong> addresses. <code>pushq</code> subtracts 8 from <code>%rsp</code> then writes; <code>popq</code> reads then adds 8. So the <em>top</em> of the stack (most recently pushed) is at the <em>lowest</em> address, and older data is at higher addresses.</p>
+
+<div class="callout">
+  <span class="label">What call and ret do (from the reference)</span>
+  <ul>
+    <li><code>call D</code> = <code>pushq PC</code> (the return address, i.e. address of the next instruction) <code>; jmp D</code>. It drops <code>%rsp</code> by 8 and stores the return address there.</li>
+    <li><code>ret</code> = <code>popq PC</code>. It reads the return address from <code>M[%rsp]</code> and jumps to it, raising <code>%rsp</code> by 8.</li>
+  </ul>
+  <p>So the return address lives on the stack at whatever <code>%rsp</code> was right after the <code>call</code>. Anything the callee pushes afterward sits <em>below</em> it (lower addresses).</p>
+</div>
+
+<h3>Prologue and epilogue (frame setup / teardown)</h3>
+<p>A function that uses a frame pointer and local space does this. <code>%rbp</code> is the callee-saved frame pointer; <code>%rsp</code> is the stack pointer.</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Setup (prologue)</th><th>Effect</th></tr>
+  <tr><td><code>pushq %rbp</code></td><td>save caller's frame pointer (it's callee-saved)</td></tr>
+  <tr><td><code>rrmovq %rsp, %rbp</code></td><td>this frame's base pointer = current top</td></tr>
+  <tr><td><code>irmovq $32, %rax</code> ; <code>subq %rax, %rsp</code></td><td>allocate 32 bytes of locals (no <code>subq $imm</code>, so load the size first)</td></tr>
+</table>
+</div>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Teardown (epilogue)</th><th>Effect</th></tr>
+  <tr><td><code>rrmovq %rbp, %rsp</code></td><td>free all locals at once (restore %rsp to the saved-%rbp slot)</td></tr>
+  <tr><td><code>popq %rbp</code></td><td>restore caller's frame pointer</td></tr>
+  <tr><td><code>ret</code></td><td>pop the return address into the PC</td></tr>
+</table>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">Why is the local size loaded into a register before <code>subq %rax, %rsp</code> instead of writing <code>subq $32, %rsp</code>?</p>
+  <ol class="opts">
+    <li>Because <code>%rsp</code> can't be a destination</li>
+    <li>Because subtraction grows the stack the wrong way</li>
+    <li>Because Y86 <code>OPq</code> takes two registers — there is no immediate form of <code>subq</code></li>
+    <li>It's just a style choice; <code>subq $32, %rsp</code> also works</li>
+  </ol>
+  <div class="why"><p>Y86's <code>OPq</code> instructions (<code>addq, subq, …</code>) only operate register-to-register. To use a constant you first materialise it with <code>irmovq</code>. Same reason you can't write <code>addq $1, %rcx</code>.</p></div>
+</div>
+
+<!-- ===================================================== -->
+<h2>Part B · Array addressing — the one formula</h2>
+
+<div class="callout key">
+  <span class="label">The formula</span>
+  For a <code>long</code> array (8 bytes each) whose element 0 is at <strong>base</strong>:
+  <pre class="bd"><code>address of a[i] = base + i × 8</code></pre>
+  In Y86 that's <code>(i×8)(%base)</code> as a displacement, or you walk a pointer with <code>addq</code>. Do the <code>i × 8</code> and the <code>base +</code> in <strong>hexadecimal</strong>, because addresses are hex.
+</div>
+
+<h3>Hex × 8 and hex + , fast</h3>
+<p>You'll multiply a small index by 8 and add it to a hex base. Multiplying by 8 is "× 8"; a few you should know on sight:</p>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>index i</th><th>0</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th></tr>
+  <tr><td>i × 8 (dec)</td><td>0</td><td>8</td><td>16</td><td>24</td><td>32</td><td>40</td><td>48</td><td>56</td><td>64</td></tr>
+  <tr><td>i × 8 (hex)</td><td>0x0</td><td>0x8</td><td>0x10</td><td>0x18</td><td>0x20</td><td>0x28</td><td>0x30</td><td>0x38</td><td>0x40</td></tr>
+</table>
+</div>
+<p>Then add to the base in hex. Example: base <code>0x200</code>, element 3 → <code>0x200 + 0x18 = 0x218</code>. Element 5 → <code>0x200 + 0x28 = 0x228</code>. (Hex addition: add digit by digit, carry at 16. <code>0x8 + 0x8 = 0x10</code>.)</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><code>%rbx</code> points to <code>buf[0]</code> at address <code>0x3000</code>. What address is <code>buf[6]</code>?</p>
+  <ol class="opts">
+    <li><code>0x3006</code></li>
+    <li><code>0x3030</code></li>
+    <li><code>0x3048</code></li>
+    <li><code>0x3060</code></li>
+  </ol>
+  <div class="why"><p><code>6 × 8 = 48 = 0x30</code>. <code>0x3000 + 0x30 = 0x3030</code>. (Option 3 is <code>6 × 12</code>; option 4 treats the offset as decimal 60.)</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">You want to store <code>%rax</code> into <code>buf[4]</code>, with <code>%rbx</code> = address of <code>buf[0]</code>. Which instruction does it?</p>
+  <ol class="opts">
+    <li><code>rmmovq %rax, 4(%rbx)</code></li>
+    <li><code>mrmovq 32(%rbx), %rax</code></li>
+    <li><code>rmmovq %rax, 32(%rbx)</code></li>
+    <li><code>rmmovq %rax, 0x20(%rax)</code></li>
+  </ol>
+  <div class="why"><p><code>buf[4]</code> is at offset <code>4 × 8 = 32 = 0x20</code> from the base, so <code>rmmovq %rax, 32(%rbx)</code> (store). Option 1 uses offset 4 (wrong — that's inside <code>buf[0]</code>). Option 2 is a load. Option 4 uses the wrong base register.</p></div>
+</div>
+
+<!-- ===================================================== -->
+<h2>Part C · The "stack smash" question, end to end</h2>
+
+<p>Here's the shape of the question you described: an array on the stack, a base pointer in <code>%rbx</code>, and you're asked to overwrite something <em>beyond</em> the array — typically the saved frame pointer or the <strong>return address</strong>. Writing past an array's end into control data is a "stack smash". The exam version is pure address arithmetic: find the offset from the base to the target, express it as an index, and write the store.</p>
+
+<h3>The picture</h3>
+<p>Suppose the callee allocated <code>long buf[4]</code> and <code>%rbx</code> points at <code>buf[0]</code>. The stack grows down, so the array sits at <em>lower</em> addresses and the saved <code>%rbp</code> and return address are <em>above</em> it. Concrete addresses:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Address</th><th>Contents</th><th>As an index from <code>%rbx</code></th></tr>
+  <tr><td><code>0x228</code></td><td><strong>return address</strong> (pushed by <code>call</code>)</td><td><code>buf[5]</code></td></tr>
+  <tr><td><code>0x220</code></td><td>saved <code>%rbp</code></td><td><code>buf[4]</code></td></tr>
+  <tr><td><code>0x218</code></td><td><code>buf[3]</code></td><td><code>buf[3]</code></td></tr>
+  <tr><td><code>0x210</code></td><td><code>buf[2]</code></td><td><code>buf[2]</code></td></tr>
+  <tr><td><code>0x208</code></td><td><code>buf[1]</code></td><td><code>buf[1]</code></td></tr>
+  <tr><td><code>0x200</code> ← <code>%rbx</code></td><td><code>buf[0]</code></td><td><code>buf[0]</code></td></tr>
+</table>
+</div>
+
+<p>The legal array indices are 0–3. Index 4 lands on the saved <code>%rbp</code>; <strong>index 5 lands on the return address</strong>. That's the slot an attacker (or an exam question) overwrites to redirect <code>ret</code>.</p>
+
+<h3>Work it out</h3>
+<ol class="steps">
+  <li><strong>Target address → offset.</strong> Return address is at <code>0x228</code>; base is <code>0x200</code>. Offset = <code>0x228 − 0x200 = 0x28</code> = 40 decimal.</li>
+  <li><strong>Offset → index.</strong> <code>40 ÷ 8 = 5</code>, so it's <code>buf[5]</code> — two slots past the end of a 4-element array.</li>
+  <li><strong>What to insert.</strong> Put the value you want to jump to (say a label/address <code>target</code>) in a register, then store it at that offset:
+    <pre class="bd"><code>irmovq target, %rax       # the address to redirect ret to
+rmmovq %rax, 40(%rbx)     # 40 = 0x28 = 5 × 8  → overwrites the return address</code></pre>
+    (equivalently <code>rmmovq %rax, 0x28(%rbx)</code>.)</li>
+  <li><strong>Where to insert it.</strong> Any time <em>after</em> <code>%rbx</code> is set to <code>buf[0]</code> and <em>before</em> the function's <code>ret</code> runs — because <code>ret</code> is what reads that slot. Put it right before the epilogue.</li>
+</ol>
+
+<div class="callout key">
+  <span class="label">The three numbers the grader wants</span>
+  <strong>Offset</strong> from the base (<code>target − base</code>, in hex), the matching <strong>index</strong> (<code>offset ÷ 8</code>), and the <strong>store instruction</strong> (<code>rmmovq %reg, offset(%rbx)</code>). Get all three by subtracting hex, dividing by 8, and reading off the slot.</p>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">Same layout, but now <code>%rbx</code> = <code>0x200</code> points at <code>buf[0]</code> and you want to overwrite the <strong>saved <code>%rbp</code></strong> at <code>0x220</code>. What's the correct store?</p>
+  <ol class="opts">
+    <li><code>rmmovq %rax, 0x20(%rsp)</code></li>
+    <li><code>rmmovq %rax, 4(%rbx)</code></li>
+    <li><code>rmmovq %rax, 32(%rbx)</code></li>
+    <li><code>mrmovq 32(%rbx), %rax</code></li>
+  </ol>
+  <div class="why"><p>Offset = <code>0x220 − 0x200 = 0x20</code> = 32 = index 4. Store with <code>rmmovq %rax, 32(%rbx)</code>. Option 1 uses the wrong base (<code>%rsp</code>), option 2 uses offset 4 (inside <code>buf[0]</code>), option 4 is a load.</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q"><code>%rbx</code> points at <code>buf[0]</code> at <code>0x1000</code>, and the return address sits at <code>0x1030</code>. Which index of <code>buf</code> is the return address, and what offset do you use?</p>
+  <ol class="opts">
+    <li><code>buf[6]</code>, offset <code>48</code> (<code>0x30</code>)</li>
+    <li><code>buf[3]</code>, offset <code>24</code> (<code>0x18</code>)</li>
+    <li><code>buf[5]</code>, offset <code>40</code> (<code>0x28</code>)</li>
+    <li><code>buf[48]</code>, offset <code>48</code></li>
+  </ol>
+  <div class="why"><p><code>0x1030 − 0x1000 = 0x30 = 48</code>. <code>48 ÷ 8 = 6</code>, so <code>buf[6]</code>, and the displacement in the instruction is 48 (or <code>0x30</code>): <code>rmmovq %rax, 48(%rbx)</code>. Watch the two conversions: subtract in hex, then divide the offset (not the raw address) by 8.</p></div>
+</div>
+
+<div class="quiz" data-answer="3">
+  <p class="q">Why does overwriting that slot change where the function goes when it finishes?</p>
+  <ol class="opts">
+    <li>Because <code>%rbp</code> is restored from it</li>
+    <li>Because <code>%rsp</code> is read from it</li>
+    <li>Because the array bounds are stored there</li>
+    <li>Because <code>ret</code> does <code>popq PC</code> — it loads the PC from that stack slot, so a new value there redirects execution</li>
+  </ol>
+  <div class="why"><p><code>ret</code> reads <code>M[%rsp]</code> (the return-address slot) into the PC. Replace the value in that slot and <code>ret</code> jumps wherever you wrote. That's the entire mechanism of a return-address smash.</p></div>
+</div>
+
+<h2>Spaced recall for tonight</h2>
+<div class="callout key">
+  <span class="label">On paper, then again in the morning</span>
+  <ol>
+    <li>Draw the stack frame: array at the bottom (low addresses), saved <code>%rbp</code> and return address above it. Which direction does the stack grow?</li>
+    <li>Given base <code>0x400</code> and target <code>0x430</code>: offset? index? the store instruction?</li>
+    <li>Write a prologue and epilogue for a function with 16 bytes of locals.</li>
+  </ol>
+</div>
+
+<p class="ask">If the retake gives you a smash question with specific numbers, paste it — we'll grind the hex together so you don't lose it to an arithmetic slip.</p>
+
+<nav class="lesson-nav">
+  <a href="0001-c-and-y86.html">← Lesson 1: C ⇄ Y86</a>
+  <a href="0003-review-grab-bag.html">Lesson 3: Grab bag →</a>
+</nav>
+
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

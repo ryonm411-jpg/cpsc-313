@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C and Y86</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Quiz 1 · Lesson 1</div>
+  <h1>C ⇄ Y86, and "Did It Change?"</h1>
+  <p class="subtitle">Read any Y86 loop and name its shape. Translate both directions. And catch the trap question: the assembly that <em>almost</em> matches the C but has one thing flipped.</p>
+</header>
+
+<p><strong>Your win for today:</strong> a reliable method, not vibes. When you're asked "is this a for/while/do-while, or neither, or was it changed?", you'll <em>back-translate the assembly into C line by line</em> and compare. That one habit fixes most of these questions.</p>
+
+<h2>The seven Y86 moves you'll see in C code</h2>
+<p>Almost every compiled C statement is one of these. Keep the <a href="../../reference/y86reference (3).pdf">y86 Reference</a> open and match each asm line to its meaning:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>C idea</th><th>Y86</th><th>Meaning (shorthand)</th></tr>
+  <tr><td>constant into a variable</td><td><code>irmovq $5, %rax</code></td><td><code>R[rax] = 5</code></td></tr>
+  <tr><td>copy a variable</td><td><code>rrmovq %rax, %rbx</code></td><td><code>R[rbx] = R[rax]</code></td></tr>
+  <tr><td>arithmetic <code>x = x OP y</code></td><td><code>addq %rsi, %rdi</code></td><td><code>R[rdi] = R[rdi] + R[rsi]</code></td></tr>
+  <tr><td>read memory / <code>*p</code> / <code>a[i]</code></td><td><code>mrmovq 8(%rbx), %rax</code></td><td><code>R[rax] = M[R[rbx] + 8]</code> <em>(load)</em></td></tr>
+  <tr><td>write memory / <code>*p = v</code></td><td><code>rmmovq %rax, 8(%rbx)</code></td><td><code>M[R[rbx] + 8] = R[rax]</code> <em>(store)</em></td></tr>
+  <tr><td>compare / test</td><td><code>subq %rsi, %rdi</code> or <code>andq %rdi, %rdi</code></td><td>sets condition codes</td></tr>
+  <tr><td>branch</td><td><code>jle L</code>, <code>jg L</code>, <code>jmp L</code></td><td>go to L (maybe conditionally)</td></tr>
+</table>
+</div>
+
+<div class="callout">
+  <span class="label">The direction trap that costs the most marks</span>
+  <p><strong><code>mrmovq D(rB), rA</code> is a LOAD</strong> (memory → register): <code>R[rA] = M[D + R[rB]]</code>. The memory operand is on the <em>left</em>.</p>
+  <p><strong><code>rmmovq rA, D(rB)</code> is a STORE</strong> (register → memory): <code>M[D + R[rB]] = R[rA]</code>. The memory operand is on the <em>right</em>.</p>
+  <p>Read the mnemonic letters: <code>m<strong>r</strong>movq</code> = <strong>m</strong>emory to <strong>r</strong>egister; <code>rmmovq</code> = <strong>r</strong>egister to <strong>m</strong>emory. The <em>register</em> operand is always written as a bare <code>%reg</code>; the <em>memory</em> operand always has the <code>D(%reg)</code> form.</p>
+</div>
+
+<h2>Four Y86 limits that force the C apart</h2>
+<p>Y86 is deliberately small. These limits explain why one C line often becomes several asm lines — and they're favourite "why can't this be one instruction?" questions:</p>
+<ol class="steps">
+  <li><strong>No memory-to-memory.</strong> <code>a[i] = b[j]</code> must load into a register, then store. Two instructions.</li>
+  <li><strong>No immediate-to-memory.</strong> <code>*p = 5</code> needs <code>irmovq $5, %rtmp</code> then <code>rmmovq %rtmp, (p)</code>. You can't write a constant straight to memory.</li>
+  <li><strong>No <code>cmpq</code> / <code>testq</code> in base Y86.</strong> To compare, you run an <code>OPq</code> that sets the flags. The usual tricks: <code>subq %ry, %rx</code> (flags on <code>x − y</code>, but it <em>overwrites</em> <code>%rx</code>), or <code>andq %rx, %rx</code> (flags on <code>x</code>, leaves <code>%rx</code> alone — the Y86 way to "test" a value against 0).</li>
+  <li><strong>Only <code>OPq</code> sets condition codes.</strong> <code>mrmovq</code>, <code>rmmovq</code>, <code>irmovq</code>, <code>rrmovq</code> do <em>not</em>. So a <code>jle</code> reads the flags from the most recent <code>addq/subq/andq/...</code>, not from the move just above it.</li>
+</ol>
+
+<!-- ===================================================== -->
+<h2>Part A · Loop shapes: where is the test?</h2>
+
+<p>This is the heart of "is it a for, while, or do-while?". The compiler expresses all of them with jumps, and <strong>the shape is decided by where the conditional branch sits</strong>:</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Shape</th><th>Structure in asm</th><th>Body runs</th><th>Tell</th></tr>
+  <tr><td><strong>do-while</strong></td><td>body … then a conditional jump <em>back up</em> to the body</td><td><strong>≥ 1 time</strong></td><td>No guard before the loop. The only branch is at the <em>bottom</em>, jumping backward.</td></tr>
+  <tr><td><strong>while / for</strong> ("jump-to-middle")</td><td><code>jmp test</code> → body → <code>test:</code> → conditional jump back up</td><td><strong>0 or more</strong></td><td>An <em>unconditional</em> <code>jmp</code> to the test <em>before</em> the body. That initial jump is the guard.</td></tr>
+  <tr><td><strong>while / for</strong> ("guarded do")</td><td>test at top, conditional jump <em>past</em> the loop; body; jump back to test</td><td><strong>0 or more</strong></td><td>A conditional jump <em>forward</em> (out of the loop) at the top.</td></tr>
+</table>
+</div>
+
+<div class="callout key">
+  <span class="label">The one question to ask</span>
+  <strong>"Can the body be skipped entirely?"</strong> If there is a check <em>before</em> the body can run (an initial <code>jmp test</code>, or a guard that jumps past the loop), the body can run <strong>zero</strong> times → it's a <code>while</code> or <code>for</code>. If the body always runs once before any check, it's a <code>do-while</code>.
+</div>
+
+<p><strong>for vs. while</strong> is a finer call — both can compile to the exact same jump-to-middle shape. The difference is bookkeeping: a <code>for</code> has a dedicated <em>init</em> (before the loop) and an <em>update</em> step at the bottom of the body (e.g. <code>i++</code>). If you see an obvious counter being incremented at the end of each iteration plus an init before, lean <code>for</code>; a <code>while</code> is just the condition. On this quiz the examinable distinction is almost always <em>do-while vs. while/for</em> — the "runs ≥1 vs. can run 0" split.</p>
+
+<h3>Worked example: back-translate a loop</h3>
+<p>Arguments follow the calling convention: <code>%rdi</code> = pointer <code>a</code>, <code>%rsi</code> = count <code>n</code>, return in <code>%rax</code>.</p>
+
+<pre><code>sum:
+    irmovq $0, %rax        # s = 0
+    irmovq $8, %r8         # stride (8 bytes per long)
+    irmovq $1, %r9         # constant 1
+    andq %rsi, %rsi        # set flags from n  (n & n = n, n unchanged)
+    jle done               # if n &lt;= 0, skip the loop entirely
+loop:
+    mrmovq (%rdi), %rdx    # %rdx = *a
+    addq %rdx, %rax        # s += *a
+    addq %r8, %rdi         # a++   (pointer moves 8 bytes)
+    subq %r9, %rsi         # n--   (and sets flags on the new n)
+    jg loop                # if n &gt; 0, repeat
+done:
+    ret</code></pre>
+
+<p>Back-translate it mechanically, then read off the C:</p>
+<ul>
+  <li>The <code>andq %rsi,%rsi; jle done</code> <em>before</em> <code>loop:</code> is a guard → the body can run 0 times → this is a <code>while</code>/<code>for</code>, <strong>not</strong> a do-while.</li>
+  <li>Body: <code>s += *a; a++; n--</code>. The test that repeats is <code>n &gt; 0</code>.</li>
+</ul>
+
+<pre><code>long sum(long *a, long n) {
+    long s = 0;
+    while (n &gt; 0) {     // equivalently: for (; n &gt; 0; n--)
+        s += *a;
+        a++;
+        n--;
+    }
+    return s;
+}</code></pre>
+
+<div class="quiz" data-answer="1">
+  <p class="q">In that <code>sum</code>, you remove the two lines <code>andq %rsi, %rsi</code> and <code>jle done</code> (so execution falls straight into <code>loop:</code>). What has the loop become?</p>
+  <ol class="opts">
+    <li>Still a <code>while</code> — no change in behaviour</li>
+    <li>A <code>do-while</code>: the body now always runs at least once, which is wrong if <code>n</code> can be 0</li>
+    <li>An infinite loop</li>
+    <li>A <code>for</code> loop counting up</li>
+  </ol>
+  <div class="why"><p>With the guard gone, nothing checks <code>n</code> before the first iteration. The body runs once and only then hits <code>subq/jg</code>. That's exactly a <code>do { … } while (n &gt; 0)</code>. If called with <code>n = 0</code> it reads <code>*a</code> and decrements <code>n</code> to −1, looping a huge number of times — the classic "they changed a while into a do-while" bug.</p></div>
+</div>
+
+<!-- ===================================================== -->
+<h2>Part B · "Did it change?" — the back-translation checklist</h2>
+
+<p>When the quiz gives you C <em>and</em> assembly and asks whether the asm faithfully implements it, don't eyeball it. Translate each asm line into shorthand, then check these six spots where graders plant changes:</p>
+
+<div class="callout">
+  <span class="label">The six things that get flipped</span>
+  <ol>
+    <li><strong>Operator.</strong> <code>addq</code> ↔ <code>subq</code>, <code>mulq</code> ↔ <code>addq</code>. Does the C say <code>+</code> but the asm <code>subq</code>?</li>
+    <li><strong>Operand order on <code>subq</code>.</strong> <code>subq %rA, %rB</code> is <code>R[rB] = R[rB] − R[rA]</code>. Backwards order computes the negation of what you want.</li>
+    <li><strong>Load vs. store.</strong> <code>mrmovq</code> (load) swapped for <code>rmmovq</code> (store), or the operands swapped.</li>
+    <li><strong>The condition.</strong> <code>jle</code> vs <code>jl</code> vs <code>jg</code> vs <code>jge</code> — an off-by-one in the comparison (<code>&lt;</code> became <code>&lt;=</code>).</li>
+    <li><strong>The displacement / index.</strong> <code>8(%rbx)</code> vs <code>16(%rbx)</code> — reading the wrong array element.</li>
+    <li><strong>The register.</strong> A result written to <code>%rcx</code> but the next line reads <code>%rdx</code>.</li>
+  </ol>
+</div>
+
+<h3>The jXX conditions (read them off the reference)</h3>
+<p>After <code>subq %rA, %rB</code> the flags describe <code>R[rB] − R[rA]</code>, so the jump tests <code>rB</code> vs <code>rA</code>:</p>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Jump</th><th>Taken when</th><th>After <code>subq %rA,%rB</code> means</th></tr>
+  <tr><td><code>je</code></td><td>result = 0</td><td><code>rB == rA</code></td></tr>
+  <tr><td><code>jne</code></td><td>result ≠ 0</td><td><code>rB != rA</code></td></tr>
+  <tr><td><code>jl</code></td><td>result &lt; 0</td><td><code>rB &lt; rA</code></td></tr>
+  <tr><td><code>jle</code></td><td>result ≤ 0</td><td><code>rB &lt;= rA</code></td></tr>
+  <tr><td><code>jg</code></td><td>result &gt; 0</td><td><code>rB &gt; rA</code></td></tr>
+  <tr><td><code>jge</code></td><td>result ≥ 0</td><td><code>rB &gt;= rA</code></td></tr>
+</table>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">The C is <code>if (x &lt; y) return 1;</code> with <code>x</code> in <code>%rdi</code>, <code>y</code> in <code>%rsi</code>. Which asm faithfully implements the comparison?</p>
+  <ol class="opts">
+    <li><code>subq %rdi, %rsi</code> ; <code>jl yes</code></li>
+    <li><code>subq %rsi, %rdi</code> ; <code>jg yes</code></li>
+    <li><code>subq %rsi, %rdi</code> ; <code>jl yes</code></li>
+    <li><code>subq %rdi, %rsi</code> ; <code>jge yes</code></li>
+  </ol>
+  <div class="why"><p>We want to test <code>x &lt; y</code>, i.e. <code>rdi &lt; rsi</code>. From the table, <code>rB &lt; rA</code> after <code>subq %rA,%rB</code>, so put <code>x</code>=rdi in rB and <code>y</code>=rsi in rA: <code>subq %rsi, %rdi</code> (flags on <code>x − y</code>), then <code>jl</code>. Option 1 compares <code>y − x</code>; option 2 flips the condition; option 4 is the negation.</p></div>
+</div>
+
+<div class="quiz" data-answer="3">
+  <p class="q">The C is <code>a[2] = a[0];</code> where <code>a</code> (a <code>long*</code>) is in <code>%rbx</code>. Which asm is correct?</p>
+  <ol class="opts">
+    <li><code>mrmovq (%rbx), 16(%rbx)</code></li>
+    <li><code>rmmovq (%rbx), %rax</code> ; <code>mrmovq %rax, 16(%rbx)</code></li>
+    <li><code>mrmovq 16(%rbx), %rax</code> ; <code>rmmovq %rax, (%rbx)</code></li>
+    <li><code>mrmovq (%rbx), %rax</code> ; <code>rmmovq %rax, 16(%rbx)</code></li>
+  </ol>
+  <div class="why"><p><code>a[0]</code> is at <code>(%rbx)</code>, <code>a[2]</code> is at <code>16(%rbx)</code> (2 × 8 bytes). You must <em>load</em> <code>a[0]</code> into a register then <em>store</em> it — Y86 has no memory-to-memory move (option 1 isn't even a legal instruction). Option 2 uses rmmovq/mrmovq backwards. Option 3 copies the wrong direction (<code>a[0] = a[2]</code>).</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q">C: <code>for (i = 0; i &lt; n; i++) sum += i;</code> The asm uses <code>subq %rsi, %rcx</code> (with <code>%rcx</code>=i, <code>%rsi</code>=n) followed by <code>jl loop</code> to repeat. What's wrong?</p>
+  <ol class="opts">
+    <li><code>subq %rsi, %rcx</code> overwrites <code>%rcx</code> (i), corrupting the counter — you must compare with a scratch copy or use <code>andq</code>/a non-destructive scheme</li>
+    <li>Nothing — this is correct</li>
+    <li><code>jl</code> should be <code>jg</code> but the subtract is fine</li>
+    <li>You can't use <code>%rcx</code> as a loop counter in Y86</li>
+  </ol>
+  <div class="why"><p><code>subq %rsi, %rcx</code> computes <code>i − n</code> and <em>writes the result back into <code>%rcx</code></em>, destroying <code>i</code>. This is the #1 Y86 comparison bug. To compare without clobbering, copy first (<code>rrmovq %rcx, %rdx; subq %rsi, %rdx</code>) or restructure as a count-down using <code>subq $1</code> on the counter where destroying-into-the-next-value is intended.</p></div>
+</div>
+
+<!-- ===================================================== -->
+<h2>Part C · C → Y86 from scratch</h2>
+
+<p>Writing Y86 from C is the same seven moves in reverse. A recipe:</p>
+<ol class="steps">
+  <li>Put each C variable in a register (follow the convention for parameters: <code>%rdi, %rsi, %rdx, %rcx, %r8, %r9</code>; result in <code>%rax</code>).</li>
+  <li>Each <code>*p</code> / <code>a[i]</code> read → <code>mrmovq</code>; each write → <code>rmmovq</code>. Compute addresses with <code>D(%reg)</code> or by walking a pointer with <code>addq</code>.</li>
+  <li>Each <code>OP</code> → the matching <code>OPq</code> (remember it's <code>rB = rB OP rA</code>).</li>
+  <li>Each condition → an <code>OPq</code> to set flags (<code>subq</code> or <code>andq</code>) + a <code>jXX</code>. Pick the jump from the table above.</li>
+  <li>Constants need <code>irmovq</code> first — you can't add/store an immediate directly.</li>
+</ol>
+
+<h3>Worked example</h3>
+<pre><code>long f(long x) {        // x in %rdi, return in %rax
+    if (x &gt; 0) return x * 2;
+    return 0;
+}</code></pre>
+<pre><code>f:
+    irmovq $0, %rax        # default return 0
+    andq %rdi, %rdi        # set flags from x
+    jle done               # if x &lt;= 0, return 0
+    irmovq $2, %rcx
+    rrmovq %rdi, %rax       # rax = x
+    mulq %rcx, %rax         # rax = x * 2    (rax = rax * rcx)
+done:
+    ret</code></pre>
+
+<div class="quiz" data-answer="1">
+  <p class="q">Translate <code>*p += 10;</code> where <code>p</code> is in <code>%rdi</code>. Which sequence is correct and legal in Y86?</p>
+  <ol class="opts">
+    <li><code>addq $10, (%rdi)</code></li>
+    <li><code>mrmovq (%rdi), %rax</code> ; <code>irmovq $10, %rcx</code> ; <code>addq %rcx, %rax</code> ; <code>rmmovq %rax, (%rdi)</code></li>
+    <li><code>mrmovq (%rdi), %rax</code> ; <code>addq $10, %rax</code> ; <code>rmmovq %rax, (%rdi)</code></li>
+    <li><code>irmovq $10, %rax</code> ; <code>rmmovq %rax, (%rdi)</code></li>
+  </ol>
+  <div class="why"><p>You can't add to memory directly (option 1) and you can't add an immediate (<code>addq $10</code> isn't legal — <code>addq</code> takes two registers; option 3). You must: load, put 10 in a register, add register-to-register, store. Option 4 just overwrites <code>*p</code> with 10.</p></div>
+</div>
+
+<h2>Spaced recall for tonight</h2>
+<div class="callout key">
+  <span class="label">Do this on paper before bed and again in the morning</span>
+  <ol>
+    <li>Write the load vs. store shorthand for <code>mrmovq 8(%rbx), %rax</code> and <code>rmmovq %rax, 8(%rbx)</code>.</li>
+    <li>From memory, the one question that separates do-while from while/for.</li>
+    <li>Why <code>subq %rsi, %rdi</code> can't be used to compare if you still need <code>%rdi</code>.</li>
+  </ol>
+</div>
+
+<p class="ask">Want to drill this live? Paste a C/asm pair (or a practice question) in the terminal and I'll walk the back-translation with you.</p>
+
+<nav class="lesson-nav">
+  <a href="index.html">← Quiz 1 index</a>
+  <a href="0002-stack-frames-and-arrays.html">Lesson 2: Stack frames &amp; arrays →</a>
+</nav>
+
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 1 Grab Bag</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Quiz 1 · Lesson 3</div>
+  <h1>Grab Bag: Conventions, Directives, Notation</h1>
+  <p class="subtitle">The rest of the Quiz 1 goals in one sweep — calling conventions you must recall cold, assembler directives, the shorthand-notation skill, and a quick pass over encoding and the SEQ phases.</p>
+</header>
+
+<h2>Part A · Calling conventions (recall these cold)</h2>
+
+<p>Straight from the <a href="../../reference/y86-conventions (1).pdf">y86 Calling Conventions</a> sheet. You get this sheet in the quiz, but knowing it from memory saves minutes.</p>
+
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Role</th><th>Register(s)</th></tr>
+  <tr><td>Return value</td><td><code>%rax</code></td></tr>
+  <tr><td>Arguments 1–6 (in order)</td><td><code>%rdi</code>, <code>%rsi</code>, <code>%rdx</code>, <code>%rcx</code>, <code>%r8</code>, <code>%r9</code></td></tr>
+  <tr><td>Arguments 7+</td><td>pushed on the stack, <strong>in reverse order</strong></td></tr>
+  <tr><td>Too-big arg (e.g. a struct)</td><td>passed on the stack (don't skip the next register for later args)</td></tr>
+  <tr><td>Stack pointer</td><td><code>%rsp</code></td></tr>
+  <tr><td>Frame (base) pointer</td><td><code>%rbp</code></td></tr>
+  <tr><td><strong>Caller-saved</strong> (scratch; callee may clobber)</td><td><code>%rax</code>, <code>%rdi</code>, <code>%rsi</code>, <code>%rdx</code>, <code>%rcx</code>, <code>%r8</code>, <code>%r9</code>, <code>%r10</code>, <code>%r11</code></td></tr>
+  <tr><td><strong>Callee-saved</strong> (must be restored before return)</td><td><code>%rbx</code>, <code>%rbp</code>, <code>%r12</code>, <code>%r13</code>, <code>%r14</code></td></tr>
+</table>
+</div>
+
+<div class="callout">
+  <span class="label">What "calling convention" means (define it)</span>
+  A calling convention is the <strong>agreed set of rules</strong> callers and callees follow so they can cooperate without seeing each other's code: where arguments go, where the return value goes, and who is responsible for preserving which registers across a call. It's a <em>contract</em>, not something the hardware enforces.
+</div>
+
+<div class="callout">
+  <span class="label">Compare &amp; contrast (a favourite short-answer)</span>
+  <ul>
+    <li><strong>Registers vs. stack for arguments:</strong> registers are fast (no memory traffic) but few, so only the first 6 go in registers; the rest spill to the stack.</li>
+    <li><strong>Caller-saved vs. callee-saved:</strong> caller-saved shifts the saving cost to the caller only when it actually has a live value to protect; callee-saved lets a caller assume those registers survive a call, at the cost of the callee saving them if it uses them. The split lets each side avoid needless saves.</li>
+  </ul>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q">A function calls another and needs the value in <code>%rcx</code> to survive the call. Whose job is it to save <code>%rcx</code>, and why?</p>
+  <ol class="opts">
+    <li>The callee — <code>%rcx</code> is callee-saved</li>
+    <li>The caller — <code>%rcx</code> is caller-saved (scratch), so the callee may overwrite it; if the caller cares, the caller must save/restore it</li>
+    <li>Neither — <code>%rcx</code> is always preserved</li>
+    <li>The callee, because <code>%rcx</code> holds the 4th argument</li>
+  </ol>
+  <div class="why"><p><code>%rcx</code> is caller-saved (it's also the 4th argument register). The callee is free to clobber it, so a caller that needs it afterward must push it before the call and pop it after.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">A function takes 8 <code>long</code> arguments. Where does the 8th argument go?</p>
+  <ol class="opts">
+    <li>In <code>%r10</code></li>
+    <li>In <code>%rax</code></li>
+    <li>On the stack (args 7 and 8 are pushed in reverse order, so arg 8 is pushed first)</li>
+    <li>It's illegal to have more than 6 arguments</li>
+  </ol>
+  <div class="why"><p>Args 1–6 use <code>%rdi…%r9</code>; args 7 and 8 go on the stack. They're pushed in reverse, so the 8th is pushed first and the 7th ends up at the lower address (nearer the top).</p></div>
+</div>
+
+<h2>Part B · Assembler directives</h2>
+<p>Directives aren't instructions — they tell the assembler how to lay out the program in memory.</p>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Directive</th><th>Purpose</th></tr>
+  <tr><td><code>.pos 0x100</code></td><td>Place the following code/data starting at address <code>0x100</code>.</td></tr>
+  <tr><td><code>.align 8</code></td><td>Advance to the next multiple of 8 (so <code>.quad</code> data is aligned).</td></tr>
+  <tr><td><code>.quad 0x1F</code></td><td>Emit one 8-byte value at the current position.</td></tr>
+  <tr><td><code>label:</code></td><td>Name the current address so <code>jmp</code>/<code>call</code>/<code>irmovq</code> can refer to it.</td></tr>
+</table>
+</div>
+<p>Typical use: set up the stack and data before the code runs —</p>
+<pre><code>    .pos 0
+    irmovq stack, %rsp      # initialise the stack pointer
+    call main
+    halt
+    .pos 0x200
+array:
+    .quad 10
+    .quad 20
+    .quad 30
+    .pos 0x300
+stack:                       # %rsp starts here, grows downward</code></pre>
+
+<div class="quiz" data-answer="0">
+  <p class="q">What does <code>.pos 0x200</code> do?</p>
+  <ol class="opts">
+    <li>Tells the assembler the next item is placed at address <code>0x200</code></li>
+    <li>Reserves <code>0x200</code> bytes of zeroed memory</li>
+    <li>Jumps execution to <code>0x200</code> at runtime</li>
+    <li>Sets <code>%rsp</code> to <code>0x200</code></li>
+  </ol>
+  <div class="why"><p><code>.pos</code> is an assemble-time layout directive: it sets where the following bytes land. It doesn't run, allocate, or move the stack pointer.</p></div>
+</div>
+
+<h2>Part C · Shorthand notation</h2>
+<p>A learning goal is to turn an instruction + its English description into the compact register-transfer form like <code>R[rB] = R[rA] * R[rB]</code>. Use <code>R[x]</code> for a register's value and <code>M[addr]</code> for a memory word.</p>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Instruction</th><th>Shorthand</th></tr>
+  <tr><td><code>mulq %rA, %rB</code></td><td><code>R[rB] = R[rB] * R[rA]</code></td></tr>
+  <tr><td><code>irmovq $V, %rB</code></td><td><code>R[rB] = V</code></td></tr>
+  <tr><td><code>mrmovq D(%rB), %rA</code></td><td><code>R[rA] = M[R[rB] + D]</code></td></tr>
+  <tr><td><code>rmmovq %rA, D(%rB)</code></td><td><code>M[R[rB] + D] = R[rA]</code></td></tr>
+  <tr><td><code>pushq %rA</code></td><td><code>R[rsp] = R[rsp] − 8; M[R[rsp]] = R[rA]</code></td></tr>
+  <tr><td><code>popq %rA</code></td><td><code>R[rA] = M[R[rsp]]; R[rsp] = R[rsp] + 8</code></td></tr>
+</table>
+</div>
+<p class="muted">Remember the <code>OPq</code> order: <code>R[rB] = R[rB] OP R[rA]</code> — the destination <code>rB</code> is also the left operand.</p>
+
+<div class="quiz" data-answer="3">
+  <p class="q">Write the shorthand for <code>subq %rsi, %rdi</code>.</p>
+  <ol class="opts">
+    <li><code>R[rsi] = R[rsi] − R[rdi]</code></li>
+    <li><code>R[rdi] = R[rsi] − R[rdi]</code></li>
+    <li><code>R[rsi] = R[rdi] − R[rsi]</code></li>
+    <li><code>R[rdi] = R[rdi] − R[rsi]</code></li>
+  </ol>
+  <div class="why"><p><code>OPq %rA, %rB</code> → <code>R[rB] = R[rB] OP R[rA]</code>. Here rA = <code>%rsi</code>, rB = <code>%rdi</code>, so <code>R[rdi] = R[rdi] − R[rsi]</code>.</p></div>
+</div>
+
+<h2>Part D · Encoding &amp; the SEQ phases (quick pass)</h2>
+
+<p>Two more Quiz 1 goals: byte encoding ⇄ assembly, and the instruction-processing phases. Here's the compressed version; if you want the full drill-heavy treatment, <a href="../0007-encoding-and-seq-stages.html">Lesson 7</a> (in the Quiz 2 folder, but the skill is identical) has random generators for both directions.</p>
+
+<h3>Encoding in one breath</h3>
+<ul>
+  <li>Byte 0 is <code>icode:ifun</code> (one hex digit each). Byte 1, when present, is <code>rA:rB</code> (<code>F</code> = none). A constant, when present, is <strong>8 bytes little-endian</strong>.</li>
+  <li>Sizes: 1 byte (<code>halt/nop/ret</code>), 2 (<code>rrmovq/OPq/pushq/popq</code>), 9 (<code>jXX/call</code>), 10 (<code>irmovq/rmmovq/mrmovq</code>).</li>
+  <li>Register numbers: <code>%rax…%rdi</code> = 0–7, <code>%r8…%r14</code> = 8–E, none = F. ifun for OPq: add sub and xor mul div mod = 0–6.</li>
+</ul>
+
+<h3>The six SEQ phases, in order</h3>
+<p>Every instruction flows through these within one clock cycle:</p>
+<pre class="bd"><code>Fetch → Decode → Execute → Memory → Writeback → PC update</code></pre>
+<div class="table-scroll">
+<table class="data">
+  <tr><th>Phase</th><th>In one line</th></tr>
+  <tr><td>Fetch</td><td>read the instruction bytes at PC; split into icode/ifun/rA/rB/valC; compute valP (next address).</td></tr>
+  <tr><td>Decode</td><td>read up to two registers into valA, valB.</td></tr>
+  <tr><td>Execute</td><td>one ALU op → valE; OPq sets condition codes; jXX/cmov compute Cnd.</td></tr>
+  <tr><td>Memory</td><td>at most one data read (→ valM) or write.</td></tr>
+  <tr><td>Writeback</td><td>write up to two registers: port E ← valE, port M ← valM.</td></tr>
+  <tr><td>PC update</td><td>set PC to valP, valC, or valM.</td></tr>
+</table>
+</div>
+<p>Example notation (the form the quiz asks for), for <code>pushq %rA</code>:</p>
+<pre class="bd"><code>Decode:    valA = R[rA];  valB = R[%rsp]
+Execute:   valE = valB + (-8)
+Memory:    M8[valE] = valA
+Writeback: R[%rsp] = valE
+PC update: PC = valP</code></pre>
+
+<div class="quiz" data-answer="1">
+  <p class="q">How many bytes is <code>irmovq $1, %rax</code>, and why?</p>
+  <ol class="opts">
+    <li>2 — one for the opcode, one for the register</li>
+    <li>10 — 1 opcode byte + 1 register byte + 8 bytes for the constant</li>
+    <li>9 — opcode plus an 8-byte constant, no register byte</li>
+    <li>1 — it's a simple move</li>
+  </ol>
+  <div class="why"><p><code>irmovq</code> has a register byte (<code>3 0 F rB</code>) <em>and</em> an 8-byte immediate, so 1 + 1 + 8 = 10. The 9-byte instructions (<code>jXX</code>, <code>call</code>) have a constant but <em>no</em> register byte.</p></div>
+</div>
+
+<h2>Final checklist for the morning</h2>
+<div class="callout key">
+  <span class="label">If you can do these five, you're ready</span>
+  <ol>
+    <li>Recite the six argument registers and the two save classes.</li>
+    <li>Back-translate a loop and name do-while vs while/for.</li>
+    <li><code>base + index × 8</code> in hex, both directions.</li>
+    <li>Write a prologue/epilogue and the shorthand for any instruction.</li>
+    <li>Name the six phases in order and give the notation for push/pop/call/ret.</li>
+  </ol>
+</div>
+
+<p class="ask">Anything on this list still shaky? Say which one and we'll drill just that.</p>
+
+<nav class="lesson-nav">
+  <a href="0002-stack-frames-and-arrays.html">← Lesson 2: Stack frames &amp; arrays</a>
+  <a href="index.html">Quiz 1 index</a>
+</nav>
+
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>
