@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 1 Practice Exam</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Quiz 1 · Practice exam</div>
+  <h1>Mock Quiz 1 (50 min)</h1>
+  <p class="subtitle">Sixteen questions across every learning goal, weighted toward C↔Y86 and the stack-frame address problem. Multiple-choice and numeric items grade themselves; the "on paper" items have full solutions you reveal after attempting them.</p>
+</header>
+
+<div class="callout key">
+  <span class="label">How to use this</span>
+  Set a 50-minute timer. Keep the <a href="../../reference/y86reference (3).pdf">y86 Reference</a>, <a href="../../reference/y86-conventions (1).pdf">Calling Conventions</a>, and <a href="../../reference/y86ImplementationDiagram.pdf">SEQ diagram</a> open — those are what you'll have in the ORCA. For the written questions, do them on scrap paper <em>first</em>, then open the solution. Don't peek.
+</div>
+
+<!-- ===================== SECTION 1: ISA & notation ===================== -->
+<h2>Section 1 · ISA &amp; notation</h2>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q1.</strong> Which best defines an <em>instruction set architecture</em>?</p>
+  <ol class="opts">
+    <li>The physical transistor layout and clock speed of a particular CPU chip</li>
+    <li>The abstract contract between software and hardware — the instructions, registers, and memory model a compiler can target, independent of how the chip is built</li>
+    <li>The set of compiler optimisation flags available for a language</li>
+    <li>The operating system's table of available system calls</li>
+  </ol>
+  <div class="why"><p>An ISA is the <em>interface</em>: what instructions exist, what registers and memory the program sees, how instructions are encoded. The transistor layout is the <em>microarchitecture</em> — one ISA can have many implementations (SEQ and PIPE both implement Y86).</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q2.</strong> In plain English, what does <code>mrmovq 16(%rbx), %rax</code> do?</p>
+  <ol class="opts">
+    <li>Stores <code>%rax</code> into memory at address <code>%rbx + 16</code></li>
+    <li>Loads into <code>%rax</code> the 8-byte value at memory address <code>%rbx + 16</code></li>
+    <li>Sets <code>%rax = %rbx + 16</code></li>
+    <li>Loads <code>%rbx</code> from the address <code>%rax + 16</code></li>
+  </ol>
+  <div class="why"><p><code>m<strong>r</strong>movq</code> = memory→register (a load). The memory operand is on the left: <code>R[rax] = M[R[rbx] + 16]</code>.</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q"><strong>Q3.</strong> Give the shorthand (register-transfer) form of <code>rmmovq %rdx, 8(%rcx)</code>.</p>
+  <ol class="opts">
+    <li><code>M[R[rcx] + 8] = R[rdx]</code></li>
+    <li><code>R[rdx] = M[R[rcx] + 8]</code></li>
+    <li><code>M[R[rdx] + 8] = R[rcx]</code></li>
+    <li><code>R[rcx] = R[rdx] + 8</code></li>
+  </ol>
+  <div class="why"><p><code>rmmovq rA, D(rB)</code> is a store: <code>M[R[rB] + D] = R[rA]</code>, with rA = <code>%rdx</code>, rB = <code>%rcx</code>, D = 8.</p></div>
+</div>
+
+<!-- ===================== SECTION 2: C <-> Y86 ===================== -->
+<h2>Section 2 · C ⇄ Y86 (your focus area)</h2>
+
+<p><strong>Q4.</strong> Consider this Y86 (<code>%rdi</code> = <code>n</code>, result in <code>%rax</code>):</p>
+<pre><code>f:
+    irmovq $0, %rax
+    irmovq $1, %r8
+loop:
+    addq %rdi, %rax        # sum += n
+    subq %r8, %rdi         # n--
+    jne loop
+    ret</code></pre>
+
+<div class="quiz" data-answer="2">
+  <p class="q">What loop shape is this, and can the body be skipped?</p>
+  <ol class="opts">
+    <li>A <code>while</code> loop — the body can run 0 times</li>
+    <li>A <code>for</code> loop with a guard at the top</li>
+    <li>A <code>do-while</code> — there is no check before <code>loop:</code>, so the body always runs at least once</li>
+    <li>An infinite loop</li>
+  </ol>
+  <div class="why"><p>Execution falls straight into <code>loop:</code> with no guard; the only branch is <code>jne loop</code> at the bottom. That's a <code>do-while</code>. Note the latent bug: called with <code>n = 0</code>, it decrements to −1 and loops billions of times (<code>jne</code> only stops at exactly 0).</p></div>
+</div>
+
+<p><strong>Q5.</strong> The C is <code>x = a - b;</code> with <code>a</code> in <code>%rdi</code>, <code>b</code> in <code>%rsi</code>, <code>x</code> returned in <code>%rax</code>. A classmate wrote:</p>
+<pre><code>    rrmovq %rsi, %rax      # rax = b
+    subq %rdi, %rax        # rax = rax - rdi
+    ret</code></pre>
+
+<div class="quiz" data-answer="1">
+  <p class="q">Does this correctly implement <code>a - b</code>?</p>
+  <ol class="opts">
+    <li>Yes — it computes <code>a − b</code></li>
+    <li>No — it computes <code>b − a</code> (the operands are reversed); it should copy <code>a</code> then subtract <code>b</code></li>
+    <li>No — <code>subq</code> between two registers is illegal</li>
+    <li>No — the result must be placed in <code>%rdx</code>, not <code>%rax</code></li>
+  </ol>
+  <div class="why"><p>It loads <code>b</code> into <code>%rax</code> then does <code>rax = rax − rdi = b − a</code>. The correct version: <code>rrmovq %rdi, %rax; subq %rsi, %rax</code>. This is exactly the "operand order got flipped" trap.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><strong>Q6.</strong> Translating <code>b[1] = b[0];</code> (<code>b</code> is a <code>long*</code> in <code>%rcx</code>), which is correct <em>and</em> legal Y86?</p>
+  <ol class="opts">
+    <li><code>mrmovq (%rcx), 8(%rcx)</code></li>
+    <li><code>mrmovq 8(%rcx), %rax</code> ; <code>rmmovq %rax, (%rcx)</code></li>
+    <li><code>mrmovq (%rcx), %rax</code> ; <code>rmmovq %rax, 8(%rcx)</code></li>
+    <li><code>irmovq (%rcx), %rax</code> ; <code>rmmovq %rax, 8(%rcx)</code></li>
+  </ol>
+  <div class="why"><p><code>b[0]</code> is at <code>(%rcx)</code>, <code>b[1]</code> at <code>8(%rcx)</code>. Load <code>b[0]</code>, then store it to <code>b[1]</code>. Option 1 is memory-to-memory (illegal). Option 2 copies the wrong way. Option 4 uses <code>irmovq</code> (immediate only).</p></div>
+</div>
+
+<p><strong>Q7. (on paper)</strong> Write Y86 for this function. <code>a</code> is in <code>%rdi</code>, <code>b</code> in <code>%rsi</code>, return in <code>%rax</code>.</p>
+<pre><code>long max(long a, long b) {
+    if (a &gt;= b) return a;
+    return b;
+}</code></pre>
+<details class="hint"><summary>Reveal a correct solution</summary>
+<pre class="bd"><code>max:
+    rrmovq %rdi, %rax      # assume a is the answer
+    rrmovq %rdi, %r8
+    subq %rsi, %r8         # r8 = a - b   (flags describe a vs b; r8 is a scratch copy)
+    jge done               # if a - b &gt;= 0, i.e. a &gt;= b, keep a
+    rrmovq %rsi, %rax      # otherwise answer is b
+done:
+    ret</code></pre>
+<p>Key moves: copy <code>a</code> into a <strong>scratch</strong> register before subtracting so you don't destroy <code>a</code> (<code>subq</code> is destructive, and there's no <code>cmpq</code>). <code>jge</code> after <code>subq %rsi,%r8</code> tests <code>a ≥ b</code>. Many equivalent answers exist; yours is right if it never clobbers <code>a</code>/<code>b</code> before they're used and picks the correct branch.</p>
+</details>
+
+<!-- ===================== SECTION 3: Calling conventions & frames ===================== -->
+<h2>Section 3 · Calling conventions &amp; stack frames</h2>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q8.</strong> Which register holds the <em>third</em> integer argument to a function?</p>
+  <ol class="opts"><li><code>%rsi</code></li><li><code>%rdx</code></li><li><code>%rcx</code></li><li><code>%rax</code></li></ol>
+  <div class="why"><p>Order is <code>%rdi, %rsi, %rdx, %rcx, %r8, %r9</code>. Third = <code>%rdx</code>. (<code>%rax</code> is the return value; <code>%rcx</code> is the fourth.)</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><strong>Q9.</strong> Which of these is a <em>callee-saved</em> register?</p>
+  <ol class="opts"><li><code>%rax</code></li><li><code>%r11</code></li><li><code>%rbx</code></li><li><code>%rcx</code></li></ol>
+  <div class="why"><p>Callee-saved: <code>%rbx, %rbp, %r12, %r13, %r14</code>. If a function uses <code>%rbx</code>, it must save and restore it. The others listed are all caller-saved (scratch).</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q"><strong>Q10.</strong> Which is a correct function <em>prologue</em> (frame setup)?</p>
+  <ol class="opts">
+    <li><code>pushq %rbp</code> ; <code>rrmovq %rsp, %rbp</code></li>
+    <li><code>rrmovq %rsp, %rbp</code> ; <code>pushq %rbp</code></li>
+    <li><code>pushq %rsp</code> ; <code>rrmovq %rbp, %rsp</code></li>
+    <li><code>popq %rbp</code> ; <code>rrmovq %rsp, %rbp</code></li>
+  </ol>
+  <div class="why"><p>Save the caller's frame pointer first (<code>pushq %rbp</code>), <em>then</em> point <code>%rbp</code> at the new frame's top (<code>rrmovq %rsp, %rbp</code>). Option 4 (<code>popq</code>) is the teardown, reversed.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><strong>Q11.</strong> A function needs the value in <code>%r10</code> to still be valid after it calls another function. What must it do, and why?</p>
+  <ol class="opts">
+    <li>Nothing — <code>%r10</code> is callee-saved and is preserved automatically</li>
+    <li>Pass <code>%r10</code> as the first argument</li>
+    <li>Save <code>%r10</code> itself (e.g. push it) before the call and restore it after, because <code>%r10</code> is caller-saved and the callee may clobber it</li>
+    <li>Move <code>%r10</code> into <code>%rax</code> first</li>
+  </ol>
+  <div class="why"><p><code>%r10</code> is caller-saved/scratch, so the callee is free to overwrite it. If the caller cares, the caller saves it.</p></div>
+</div>
+
+<!-- ===================== SECTION 4: Stack smash / addressing ===================== -->
+<h2>Section 4 · Array addressing &amp; the smash (your focus area)</h2>
+
+<p>For Q12–Q14, a function has a local <code>long buf[4]</code> and <code>%rbx</code> points at <code>buf[0]</code>, which is at address <code>0x400</code>. The stack grows down, so above the array sit the saved <code>%rbp</code> (at <code>0x420</code>) and the return address (at <code>0x428</code>).</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q12.</strong> What address is <code>buf[3]</code>?</p>
+  <ol class="opts"><li><code>0x403</code></li><li><code>0x418</code></li><li><code>0x424</code></li><li><code>0x430</code></li></ol>
+  <div class="why"><p><code>3 × 8 = 24 = 0x18</code>; <code>0x400 + 0x18 = 0x418</code>. (<code>0x403</code> is offset 3 bytes — inside <code>buf[0]</code>.)</p></div>
+</div>
+
+<div class="quiz numeric" data-answer="5">
+  <p class="q"><strong>Q13.</strong> Writing to which <em>index</em> of <code>buf</code> (treating the store as <code>buf[i]</code>) would overwrite the <strong>return address</strong> at <code>0x428</code>? Enter the integer <code>i</code>.</p>
+  <div class="why"><p>Offset = <code>0x428 − 0x400 = 0x28 = 40</code>. <code>40 ÷ 8 = 5</code>, so <code>buf[5]</code> — two past the end of a 4-element array.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><strong>Q14.</strong> Which single instruction, inserted before the function's <code>ret</code>, overwrites that return address with the value in <code>%rax</code>?</p>
+  <ol class="opts">
+    <li><code>rmmovq %rax, 5(%rbx)</code></li>
+    <li><code>mrmovq 40(%rbx), %rax</code></li>
+    <li><code>rmmovq %rax, 40(%rbx)</code></li>
+    <li><code>rmmovq %rax, 0x28(%rsp)</code></li>
+  </ol>
+  <div class="why"><p>Offset 40 (= <code>0x28</code>) from the base in <code>%rbx</code>, and it's a <em>store</em>: <code>rmmovq %rax, 40(%rbx)</code> (<code>0x28(%rbx)</code> is the same). Option 1 uses the index as the byte offset; option 2 is a load; option 4 uses the wrong base register.</p></div>
+</div>
+
+<!-- ===================== SECTION 5: Directives, encoding, SEQ ===================== -->
+<h2>Section 5 · Directives, encoding &amp; SEQ phases</h2>
+
+<div class="quiz" data-answer="3">
+  <p class="q"><strong>Q15.</strong> What does the directive <code>.quad 0x1F</code> do?</p>
+  <ol class="opts">
+    <li>Jumps to address <code>0x1F</code> at runtime</li>
+    <li>Reserves <code>0x1F</code> bytes of space</li>
+    <li>Defines a label named <code>0x1F</code></li>
+    <li>Emits one 8-byte value (<code>0x1F</code>) into memory at the current position</li>
+  </ol>
+  <div class="why"><p><code>.quad</code> lays down a single 8-byte (quadword) constant. It's assemble-time data, not a runtime action.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q16.</strong> Encode <code>irmovq $5, %rax</code> as bytes.</p>
+  <ol class="opts">
+    <li><code>30 0f 05 00 00 00 00 00 00 00</code></li>
+    <li><code>30 f0 05 00 00 00 00 00 00 00</code></li>
+    <li><code>30 f0 00 00 00 00 00 00 00 05</code></li>
+    <li><code>30 05 f0 00 00 00 00 00 00 00</code></li>
+  </ol>
+  <div class="why"><p><code>irmovq</code> is <code>3 0 F rB</code>: byte 0 = <code>30</code>, byte 1 = <code>F:rB</code> = <code>F0</code> (rB = <code>%rax</code> = 0), then the constant <code>5</code> as 8 bytes little-endian: <code>05 00 … 00</code>. Option 1 reverses the register nibbles; option 3 is big-endian.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q17.</strong> Decode the bytes <code>60 31</code>.</p>
+  <ol class="opts">
+    <li><code>addq %rcx, %rbx</code></li>
+    <li><code>addq %rbx, %rcx</code></li>
+    <li><code>subq %rbx, %rcx</code></li>
+    <li><code>rrmovq %rbx, %rcx</code></li>
+  </ol>
+  <div class="why"><p>Byte 0 <code>6 0</code> = OPq, ifun 0 = <code>add</code>. Byte 1 <code>3 1</code> = rA:rB = <code>%rbx</code>:<code>%rcx</code>. Assembly lists rA first: <code>addq %rbx, %rcx</code> (meaning <code>R[rcx] = R[rcx] + R[rbx]</code>).</p></div>
+</div>
+
+<p><strong>Q18. (on paper)</strong> List the operations in each SEQ phase for <code>call Dest</code>, in course notation.</p>
+<details class="hint"><summary>Reveal the solution</summary>
+<pre class="bd"><code>Fetch:     icode:ifun = M1[PC]
+           valC = M8[PC+1]        # no register byte, so valC starts at PC+1
+           valP = PC + 9
+Decode:    valB = R[%rsp]
+Execute:   valE = valB + (-8)
+Memory:    M8[valE] = valP        # push the return address (valP)
+Writeback: R[%rsp] = valE
+PC update: PC = valC              # jump to the target</code></pre>
+<p>The two things people miss: <code>valC</code> is at <code>PC+1</code> (call has no register byte), and what's pushed is <code>valP</code>, the return address.</p>
+</details>
+
+<div class="quiz" data-answer="3">
+  <p class="q"><strong>Q19.</strong> Could SEQ execute a new instruction <code>addm D(rB), rA</code> meaning <code>R[rA] = M[D + R[rB]] + R[rA]</code> as a single instruction?</p>
+  <ol class="opts">
+    <li>Yes: <code>valE = valB + valC</code>, then <code>valM = M8[valE] + valA</code></li>
+    <li>Yes, it's just <code>mrmovq</code> followed by <code>addq</code> internally</li>
+    <li>No, because it writes two registers</li>
+    <li>No — it needs the ALU twice (once for the address <code>D + R[rB]</code>, once for the final add), but SEQ has one ALU in Execute and no wire to feed <code>valM</code> back into it</li>
+  </ol>
+  <div class="why"><p>The address needs an ALU add in Execute, and the final <code>valM + valA</code> would need a second ALU operation <em>after</em> Memory. SEQ has a single ALU used once, and <code>valM</code> isn't available until after Execute, so there's no path to add it. Name the specific missing resource — "too complicated" earns nothing.</p></div>
+</div>
+
+<p><strong>Q20. (on paper)</strong> Enumerate the six SEQ phases in order, and say in one line what each produces. Then check against <a href="0003-review-grab-bag.html#">Lesson 3, Part D</a>.</p>
+<details class="hint"><summary>Reveal</summary>
+<p><strong>Fetch</strong> (icode/ifun/rA/rB/valC, valP) → <strong>Decode</strong> (valA, valB) → <strong>Execute</strong> (valE; sets CC for OPq; Cnd for jXX/cmov) → <strong>Memory</strong> (valM on a read, or a write) → <strong>Writeback</strong> (port E ← valE, port M ← valM) → <strong>PC update</strong> (PC ← valP/valC/valM).</p>
+</details>
+
+<h2>Scoring yourself</h2>
+<div class="callout">
+  <span class="label">After the timer</span>
+  Auto-graded: Q1–Q6, Q8–Q17, Q19 (17 items). Self-graded written: Q7, Q18, Q20. If you missed a C↔asm item, redo <a href="0001-c-and-y86.html">Lesson 1</a>'s back-translation; if you slipped on an address, <a href="0002-stack-frames-and-arrays.html">Lesson 2</a>. Bring any question you got wrong — or weren't sure about — to the terminal and we'll dissect it.
+</div>
+
+<nav class="lesson-nav">
+  <a href="0003-review-grab-bag.html">← Lesson 3: Grab bag</a>
+  <a href="index.html">Quiz 1 index</a>
+</nav>
+
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>
