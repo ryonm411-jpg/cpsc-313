@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 1 — New-Instruction Feasibility</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Quiz 1 · "Can SEQ run this new instruction?"</div>
+  <h1>New-Instruction Feasibility Drill</h1>
+  <p class="subtitle">Ten questions in the exact shape of the <code>addm</code> one you pasted. Each asks: given the SEQ datapath, can this brand-new instruction run as a <em>single</em> instruction — and if not, <em>which specific resource</em> is missing? "Too complicated" earns nothing; name the wire.</p>
+</header>
+
+<div class="callout key">
+  <span class="label">The hardware budget — one of each</span>
+  <p>Every SEQ instruction gets, at most, this much hardware. An instruction is feasible <strong>iff</strong> it fits inside this budget. If it needs more, say exactly what.</p>
+  <ul>
+    <li><strong>Fetch</strong> — one constant <code>valC</code> (only if the encoding has room for it).</li>
+    <li><strong>Decode</strong> — <strong>two</strong> register reads, into <code>valA</code> and <code>valB</code>. (The same register may be read into both.)</li>
+    <li><strong>Execute</strong> — <strong>one</strong> ALU operation, producing one <code>valE</code>. The A input is <code>valA</code>, <code>valC</code>, or <code>±8</code>; the B input is <code>valB</code> or <code>0</code>. So <code>valB+valC</code>, <code>valB−valA</code>, <code>valA+0</code>, <code>valB±8</code> are fine — but <strong>not</strong> <code>valA+valC</code> (both on the A side), and <strong>nothing</strong> can use <code>valM</code> (it doesn't exist yet).</li>
+    <li><strong>Memory</strong> — <strong>one</strong> access. Address is <code>valE</code> or <code>valA</code>. Data written is <code>valA</code> or <code>valP</code> (never <code>valC</code>, never <code>valM</code>).</li>
+    <li><strong>Writeback</strong> — <strong>two</strong> write ports: port E writes <code>valE</code>, port M writes <code>valM</code>. (So writing two registers is <em>fine</em> — that's what <code>popq</code> does.)</li>
+    <li><strong>PC update</strong> — picks one of <code>valP</code>, <code>valC</code>, <code>valM</code> (optionally chosen by <code>Cnd</code>).</li>
+  </ul>
+</div>
+
+<div class="callout">
+  <span class="label">The three-question method</span>
+  <ol>
+    <li><strong>How many ALU operations does it need?</strong> More than one add/subtract that depends on a different value → <em>no</em> (one ALU).</li>
+    <li><strong>Does any step need <code>valM</code> fed somewhere other than a register or the PC?</strong> (e.g. back into the ALU, or into another memory access) → <em>no</em> (<code>valM</code> appears only after Execute, and only reaches writeback or PC update).</li>
+    <li><strong>Does the value it needs actually have a wire to where it's going?</strong> <code>valC</code>→memory-data, register→PC, <code>valA</code>→write-port: none of those wires exist.</li>
+  </ol>
+  <p>Writing two registers, reading the same register twice, and <code>PC = valM</code> are all <em>allowed</em> — those are the traps that look impossible but aren't (<code>popq</code>, <code>ret</code>).</p>
+</div>
+
+<h2>The questions</h2>
+<p class="muted">Each grades itself. After you answer, open "Why" and make sure your <em>reason</em> matches — on the quiz you must name the resource, not just pick yes/no.</p>
+
+<div class="quiz" data-answer="0">
+  <p class="q"><strong>Q1.</strong> <code>leaq D(rB), rA</code> — compute an address without touching memory: <code>R[rA] = R[rB] + D</code>. Feasible in SEQ?</p>
+  <ol class="opts">
+    <li>Yes — Execute computes <code>valE = valB + valC</code>, and Writeback sends <code>valE</code> to <code>rA</code> through port E. No Memory access at all.</li>
+    <li>No — any instruction that computes an address must go through the Memory stage.</li>
+    <li>No — <code>valC</code> can't be an input to the ALU.</li>
+    <li>Yes, but only if <code>D</code> is <code>0</code> or <code>±8</code>.</li>
+  </ol>
+  <div class="why"><p>It's exactly <code>mrmovq</code> minus the memory read: <code>valE = valB + valC</code> (one ALU op), then <code>R[rA] = valE</code> via port E. Nothing forces an instruction to use Memory. <code>valC</code> <em>is</em> a legal ALU A-input, so option 3's restriction is false.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q2.</strong> <code>negq rB</code> — negate in place: <code>R[rB] = −R[rB]</code>. Feasible?</p>
+  <ol class="opts">
+    <li>No — the ALU can add or subtract two values, but it can't subtract a register from a constant.</li>
+    <li>Yes — read the register into <code>valA</code>, force the ALU's B input to <code>0</code>, and compute <code>valE = 0 − valA</code>; write <code>valE</code> back to <code>rB</code>.</li>
+    <li>No — negation needs a dedicated negate unit that SEQ doesn't have.</li>
+    <li>Yes, but it needs two register reads to do it.</li>
+  </ol>
+  <div class="why"><p><code>0</code> is a legal ALU B-input and subtract is a legal ALU op, so <code>valE = 0 − valA = −R[rB]</code> in a single Execute. One read, one ALU op, one write — comfortably inside budget.</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q"><strong>Q3.</strong> <code>doubleq rB</code> — <code>R[rB] = 2 × R[rB]</code>. Feasible?</p>
+  <ol class="opts">
+    <li>Yes — Decode reads <code>R[rB]</code> into <em>both</em> <code>valA</code> and <code>valB</code>, and Execute computes <code>valE = valB + valA</code>.</li>
+    <li>No — Decode can't route the same register to both read ports.</li>
+    <li>No — multiplying by 2 needs a shifter, which the ALU isn't.</li>
+    <li>Yes, but only via <code>valE = valB + 8</code>.</li>
+  </ol>
+  <div class="why"><p>The two read ports are independent; both can name <code>rB</code>. Then <code>valE = valB + valA = R[rB] + R[rB]</code> is one ordinary ALU add. (×2 happens to equal a left-shift, but you don't need one.)</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><strong>Q4.</strong> <code>jmem D(rB)</code> — indirect jump: set <code>PC = M[D + R[rB]]</code> (jump to the address stored in memory). Feasible?</p>
+  <ol class="opts">
+    <li>No — PC update can only take <code>valP</code> or <code>valC</code>; a value read from memory can never become the PC.</li>
+    <li>No — it needs the ALU twice: once for the address, once to load the PC.</li>
+    <li>Yes — <code>valE = valB + valC</code> addresses memory, <code>valM = M8[valE]</code> is read, and PC update selects <code>valM</code> — exactly how <code>ret</code> works.</li>
+    <li>Yes, but only for a backward jump.</li>
+  </ol>
+  <div class="why"><p>This looks illegal but isn't: <code>ret</code> already does <code>PC = valM</code>. One ALU op for the address, one memory read, and PC update picks <code>valM</code>. All three are wired. The predictor would mispredict it (like <code>ret</code>), but that's a performance issue, not a feasibility one.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><strong>Q5.</strong> <code>ldinc (rB), rA</code> — load with post-increment: <code>R[rA] = M[R[rB]]</code> and <code>R[rB] = R[rB] + 8</code>. Feasible?</p>
+  <ol class="opts">
+    <li>No — writing both <code>rA</code> and <code>rB</code> needs two register writes, and SEQ has only one write port.</li>
+    <li>No — it needs the ALU twice: once for the load address, once for the <code>+8</code>.</li>
+    <li>Yes — use <code>valA = R[rB]</code> as the read address, and <code>valE = valB + 8</code> as the new pointer; port M writes <code>valM</code> to <code>rA</code>, port E writes <code>valE</code> to <code>rB</code>. It's <code>popq</code>'s shape.</li>
+    <li>Yes, but only when <code>rA</code> and <code>rB</code> are the same register.</li>
+  </ol>
+  <div class="why"><p>The load address is the <em>old</em> pointer, available directly as <code>valA</code> — so the one ALU op is free to compute the <code>+8</code>. Two register writes are fine: that's precisely what <code>popq</code> does (<code>R[%rsp]</code> via port E, <code>R[rA]</code> via port M). Option 1's "one write port" is the trap.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q6.</strong> <code>stinc rA, (rB)</code> — store with post-increment: <code>M[R[rB]] = R[rA]</code> and <code>R[rB] = R[rB] + 8</code>. Feasible? (Compare carefully with Q5.)</p>
+  <ol class="opts">
+    <li>Yes — it's the mirror image of the load version in Q5, so the same wiring works.</li>
+    <li>No — the data to store must travel on <code>valA</code>, so the <em>address</em> can only come from <code>valE</code>; that leaves no ALU result for the <code>+8</code>. It would need the ALU twice.</li>
+    <li>No — you can't read and write memory in the same instruction.</li>
+    <li>Yes — <code>valE = valB + 8</code> serves as both the store address and the new pointer.</li>
+  </ol>
+  <div class="why"><p>The asymmetry with Q5 is the whole point. A store's data input must be <code>valA</code>, so <code>valA = R[rA]</code> is taken — the address must be <code>valE</code>. But then <code>valE</code> has to be the address (<code>valB + 0</code>) <em>and</em> the increment (<code>valB + 8</code>) at once: impossible with one ALU. Option 4's trap: <code>valB + 8</code> is the right <em>new pointer</em> but the <em>wrong store address</em> (off by 8).</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q7.</strong> <code>iaddq $V, rB</code> — add an immediate: <code>R[rB] = R[rB] + V</code>. Feasible?</p>
+  <ol class="opts">
+    <li>No — OPq-style instructions can never carry an immediate.</li>
+    <li>Yes — give it a <code>valC</code> field like <code>irmovq</code> (a 10-byte encoding); then <code>valE = valB + valC</code> and <code>R[rB] = valE</code>.</li>
+    <li>No — the only constants wired to the ALU are <code>0</code> and <code>±8</code>, so <code>V</code> can't reach it.</li>
+    <li>Yes, but only for <code>V ∈ {1, 8}</code>.</li>
+  </ol>
+  <div class="why"><p><code>valC</code> is a legal ALU A-input (that's how <code>rmmovq/mrmovq</code> add their displacement). Once the encoding carries <code>valC</code>, <code>valE = valB + valC</code> fits. Option 3 is true <em>only</em> for a 2-byte encoding with no <code>valC</code> — the fix is to add the <code>valC</code> field. (This is CS:APP's famous <code>iaddq</code> homework instruction.)</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q8.</strong> <code>incq rB</code> — <code>R[rB] = R[rB] + 1</code>, encoded in just <strong>2 bytes</strong> (icode + rA:rB, no constant field). Feasible as given?</p>
+  <ol class="opts">
+    <li>Yes — <code>valE = valB + 1</code>.</li>
+    <li>No — with no <code>valC</code> field, the only constants wired into the ALU are <code>0</code> and <code>±8</code>; there is no <code>1</code> to add. (Give it a <code>valC</code> field and it becomes <code>iaddq $1, rB</code>, which fits.)</li>
+    <li>No — incrementing a register requires a Memory access.</li>
+    <li>Yes — <code>valE = valB + valC</code>.</li>
+  </ol>
+  <div class="why"><p>Contrast with Q7: the <em>operation</em> is trivial, but a 2-byte encoding has no place to put the <code>1</code>, and the ALU's hard-wired constants are only <code>0</code> and <code>±8</code>. Option 4 assumes a <code>valC</code> this encoding doesn't have. The engineering fix is exactly Q7.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q"><strong>Q9.</strong> <code>swapq rA, rB</code> — exchange two registers: <code>R[rA] ↔ R[rB]</code>. Feasible?</p>
+  <ol class="opts">
+    <li>Yes — write <code>R[rA] = valB</code> and <code>R[rB] = valA</code> directly through the two ports.</li>
+    <li>No — the two write ports carry only <code>valE</code> and <code>valM</code>; <code>valA</code> and <code>valB</code> have no wire to a write port, and <code>valM</code> can only come from a memory read.</li>
+    <li>Yes — do it with two ALU passes, one per value.</li>
+    <li>No — because it reads two registers.</li>
+  </ol>
+  <div class="why"><p>Two writes are fine (Q5), but <em>what</em> you can write is fixed: port E = <code>valE</code> (an ALU result), port M = <code>valM</code> (a memory read). The ALU can carry one value through <code>valE</code>, but the second value would have to arrive as <code>valM</code> — and nothing reads memory here. So one of the two writes has no legal source. Reading two registers (option 4) is perfectly normal.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q"><strong>Q10.</strong> <code>pushv $V</code> — push an immediate constant: <code>R[%rsp] = R[%rsp] − 8</code>, then <code>M8[R[%rsp]−8] = V</code>. Feasible?</p>
+  <ol class="opts">
+    <li>Yes — <code>valE = R[%rsp] − 8</code>, then <code>M8[valE] = valC</code>.</li>
+    <li>No — you can't decrement <code>%rsp</code> and use it in the same instruction.</li>
+    <li>No — the address part is fine (<code>valE = valB − 8</code>), but Memory can only write <code>valA</code> or <code>valP</code>; <code>valC</code> has no wire to the memory data input. It needs a new wire, <code>valC → Data</code>.</li>
+    <li>Yes — it's identical to <code>call</code>.</li>
+  </ol>
+  <div class="why"><p>The stack arithmetic is exactly <code>pushq</code>/<code>call</code> (<code>valE = valB − 8</code>, decrement-and-use is normal). What fails is the <em>data</em>: the memory write port accepts only <code>valA</code> (a register value) or <code>valP</code> (which is why <code>call</code> can push a return address). <code>valC</code> isn't routed there. Spot the pattern: the arithmetic fits, but a wire is missing.</p></div>
+</div>
+
+<h2>Two to write out (paper)</h2>
+<p>For the quiz you may be asked to <em>produce</em> the SEQ stage table for a feasible new instruction, not just judge it. Do these on paper, then check.</p>
+
+<p><strong>W1.</strong> Write the full SEQ stage notation for the feasible <code>leaq D(rB), rA</code> from Q1.</p>
+<details class="hint"><summary>Reveal</summary>
+<pre class="bd"><code>Fetch:     icode:ifun = M1[PC]
+           rA:rB      = M1[PC+1]
+           valC       = M8[PC+2]
+           valP       = PC + 10
+Decode:    valB = R[rB]
+Execute:   valE = valB + valC
+Memory:    —            (no access)
+Writeback: R[rA] = valE
+PC update: PC = valP</code></pre>
+<p>10-byte encoding (there's a <code>valC</code>, so it starts at <code>PC+2</code> and the instruction is 10 bytes). No Memory stage, one write via port E. It's <code>mrmovq</code> with the memory read deleted.</p>
+</details>
+
+<p><strong>W2.</strong> Write the SEQ stage notation for the feasible <code>ldinc (rB), rA</code> from Q5 (the <code>popq</code>-shaped load).</p>
+<details class="hint"><summary>Reveal</summary>
+<pre class="bd"><code>Fetch:     icode:ifun = M1[PC]
+           rA:rB      = M1[PC+1]
+           valP       = PC + 2
+Decode:    valA = R[rB]          # old pointer -> used as the read address
+           valB = R[rB]          # same register into the other port
+Execute:   valE = valB + 8       # the new pointer
+Memory:    valM = M8[valA]       # read at the OLD pointer, not valE
+Writeback: R[rB] = valE          # port E
+           R[rA] = valM          # port M
+PC update: PC = valP</code></pre>
+<p>The twin of <code>popq rA</code> (which is <code>ldinc (%rsp), rA</code> with the increment baked in). The key move is reading the base register into <strong>both</strong> ports so the ALU is free to compute <code>+8</code> while the memory read uses the old value as its address.</p>
+</details>
+
+<h2>Scoring</h2>
+<div class="callout">
+  <span class="label">What to check</span>
+  <p>Count your <em>reasons</em>, not just the yes/no. Feasible: Q1, Q2, Q3, Q4, Q5, Q7. Infeasible: Q6, Q8, Q9, Q10. The three recurring killers are: <strong>a second ALU operation</strong> (Q6), <strong>a missing wire</strong> (Q9 to a write port, Q10 <code>valC→Data</code>), and <strong>a constant with nowhere to live</strong> (Q8). The three traps that look impossible but pass: <strong>two register writes</strong> (Q5), <strong>reading one register twice</strong> (Q3), and <strong>PC = valM</strong> (Q4).</p>
+</div>
+
+<nav class="lesson-nav">
+  <a href="0004-practice-exam.html">← Mock Quiz 1</a>
+  <a href="index.html">Quiz 1 index</a>
+</nav>
+
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>
