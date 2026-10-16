@@ -87,14 +87,17 @@
       var list = el('div', 'cw-cases');
       spec.tests.forEach(function (t) {
         var row = el('div', 'cw-case');
+        // The test's inputs live in t.vars; its expected value in t.want. Merge them
+        // so both setup() and check() see one object (check reads v.want).
+        var v = Object.assign({ want: t.want }, t.vars);
         try {
-          var r = runOne(spec, userCode, t.vars);
+          var r = runOne(spec, userCode, v);
           if (!firstRes) firstRes = r.res;
           if (r.stopped) {
             allPass = false; row.className = 'cw-case no';
             row.innerHTML = '<span class="tag">✕</span> ' + t.label + ' — ran too long (likely an infinite loop — check your exit condition)';
           } else {
-            var c = spec.check(r.res, t.vars);
+            var c = spec.check(r.res, v);
             var ok = big(c.got) === big(c.want);
             if (!ok) allPass = false;
             row.className = 'cw-case ' + (ok ? 'ok' : 'no');

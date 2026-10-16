@@ -77,6 +77,25 @@ done:
 <p>This one is pure Quiz 2: the starter code is <em>correct</em> but <em>stalls</em> — each <code>addq</code> waits for the <code>mrmovq</code> right above it (a load/use hazard). Reorder the instructions so your result is unchanged but the pipeline read-out shows <strong>0 data-stall bubbles</strong>. The checker confirms correctness; <em>you</em> read the bubble count.</p>
 <div id="p6"></div>
 
+<!-- ============ P7 ============ -->
+<h2>Problem 7 · count the negative elements — a branch you'll mispredict</h2>
+<p>A conditional branch <em>inside</em> a loop is where prediction matters. Write it, then look at the squash count in the read-out and ask: with <code>BTFNT</code>, which way is this branch predicted, and how often is that wrong for the test data?</p>
+<div id="p7"></div>
+
+<!-- ============ P8 ============ -->
+<h2>Problem 8 · find the maximum element — keep-or-replace in a loop</h2>
+<div id="p8"></div>
+
+<!-- ============ P9 ============ -->
+<h2>Problem 9 · schedule the <em>loop body</em> — hide the load latency every iteration</h2>
+<p>This is Problem 6 made real: the stall is now <em>inside a loop</em>, so it costs you a bubble on <strong>every</strong> iteration. The body below loads <code>a[i]</code> and immediately adds it (a load/use hazard). There's one independent instruction already in the body — the pointer bump <code>addq %r8, %rdi</code>. Move it into the gap so the load has somewhere to hide, and the per-iteration stall disappears. Same sum, far fewer bubbles.</p>
+<div id="p9"></div>
+
+<!-- ============ P10 ============ -->
+<h2>Problem 10 · call a helper — a frame, a <code>ret</code>, and its 3-bubble hazard</h2>
+<p>Write <code>sq(x) = x·x</code> as a real callee and call it. Watch the read-out: the <code>ret</code> costs 3 control bubbles because the return address isn't known until <code>ret</code> reaches the end of the pipeline — a Quiz 2 staple.</p>
+<div id="p10"></div>
+
 <div class="callout key">
   <span class="label">Where these show up on the quiz</span>
   Problems 1 and 6 are the heart of "write a program with a conditional jump / schedule it and predict the pipeline behaviour." Count the bubbles each one reports and practise saying <em>why</em> (control hazard on the jump; load/use hazards before you reorder). Then try changing the predictor in your head: would <code>always-taken</code> vs <code>BTFNT</code> change the squash count?
@@ -196,6 +215,70 @@ CodeWrite.problem(document.getElementById('p6'), {
   ],
   check: function (res, v) { return { got: rax(res), want: v.want }; },
   solution: '    irmovq $0, %rax\n    mrmovq 0(%rdi), %r8    # issue all three loads first ...\n    mrmovq 8(%rdi), %r9\n    mrmovq 16(%rdi), %r10\n    addq %r8, %rax         # ... so each value is ready by the time it is used\n    addq %r9, %rax\n    addq %r10, %rax\n    halt'
+});
+
+// ---- P7: count negatives ----
+CodeWrite.problem(document.getElementById('p7'), {
+  prompt: '<p class="q">Count how many elements are <strong>strictly negative</strong> (&lt; 0), leaving the count in <code>%rax</code>.</p>',
+  given: '<code>%rdi</code> -> array, <code>%rsi</code> = length. Result in <code>%rax</code>.',
+  setup: arr,
+  starter: 'cneg:\n    # %rdi -> array, %rsi = length. Count elements < 0 into %rax.\n    # TODO\n    halt\n',
+  tests: [
+    { vars: { data: [-1, 2, -3, 4, -5], len: 5 }, label: '[-1,2,-3,4,-5]', want: 3 },
+    { vars: { data: [1, 2, 3], len: 3 }, label: '[1,2,3]', want: 0 },
+    { vars: { data: [-1, -2], len: 2 }, label: '[-1,-2]', want: 2 },
+    { vars: { data: [0, 0, 0], len: 3 }, label: '[0,0,0] (0 is not negative)', want: 0 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: 'cneg:\n    irmovq $0, %rax\n    irmovq $8, %r8\n    irmovq $1, %r9\n    andq %rsi, %rsi\n    jle done\nloop:\n    mrmovq (%rdi), %rdx\n    andq %rdx, %rdx       # test the element\n    jge skip              # >= 0  ->  not negative\n    addq %r9, %rax        # count++\nskip:\n    addq %r8, %rdi\n    subq %r9, %rsi\n    jg loop\ndone:\n    halt'
+});
+
+// ---- P8: array max ----
+CodeWrite.problem(document.getElementById('p8'), {
+  prompt: '<p class="q">Leave the <strong>largest</strong> element of the array in <code>%rax</code>.</p>',
+  given: '<code>%rdi</code> -> array, <code>%rsi</code> = length (&ge; 1). Result in <code>%rax</code>. Start by assuming <code>a[0]</code> is the max.',
+  setup: arr,
+  starter: 'amax:\n    # %rdi -> array, %rsi = length (>= 1). Put the largest element in %rax.\n    # TODO\n    halt\n',
+  tests: [
+    { vars: { data: [3, 1, 4, 1, 5], len: 5 }, label: '[3,1,4,1,5]', want: 5 },
+    { vars: { data: [7], len: 1 }, label: '[7]', want: 7 },
+    { vars: { data: [-2, -9, -3], len: 3 }, label: '[-2,-9,-3]', want: -2 },
+    { vars: { data: [10, 2, 8], len: 3 }, label: '[10,2,8]', want: 10 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: 'amax:\n    mrmovq (%rdi), %rax   # max = a[0]\n    irmovq $8, %r8\n    irmovq $1, %r9\n    subq %r9, %rsi        # remaining = len - 1\n    jle done\n    addq %r8, %rdi        # point at a[1]\nloop:\n    mrmovq (%rdi), %rdx\n    rrmovq %rdx, %r10\n    subq %rax, %r10       # r10 = elem - max  (scratch compare)\n    jle skip              # elem <= max  ->  keep current max\n    rrmovq %rdx, %rax     # new max\nskip:\n    addq %r8, %rdi\n    subq %r9, %rsi\n    jg loop\ndone:\n    halt'
+});
+
+// ---- P9: schedule the loop body ----
+CodeWrite.problem(document.getElementById('p9'), {
+  prompt: '<p class="q">Sum the array into <code>%rax</code>. The loop body below is correct but stalls once per iteration (the <code>addq</code> uses <code>%rdx</code> straight after the load). Reorder the body so the result is unchanged and the read-out shows <strong>0 data-stall bubbles</strong> — without adding instructions.</p>',
+  given: '<code>%rdi</code> -> array, <code>%rsi</code> = length. Result in <code>%rax</code>. Hint: the pointer bump is independent of the load — move it into the gap.',
+  setup: arr,
+  starter: '    irmovq $0, %rax\n    irmovq $8, %r8\n    irmovq $1, %r9\n    andq %rsi, %rsi\n    jle done\nloop:\n    mrmovq (%rdi), %rdx   # load a[i]\n    addq %rdx, %rax       # STALL: uses %rdx one cycle too soon\n    addq %r8, %rdi        # (independent of the load)\n    subq %r9, %rsi\n    jg loop\ndone:\n    halt\n',
+  tests: [
+    { vars: { data: [3, 1, 4, 1, 5], len: 5 }, label: '[3,1,4,1,5]', want: 14 },
+    { vars: { data: [10], len: 1 }, label: '[10]', want: 10 },
+    { vars: { data: [99], len: 0 }, label: 'length 0', want: 0 },
+    { vars: { data: [2, 2, 2, 2], len: 4 }, label: '[2,2,2,2]', want: 8 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: '    irmovq $0, %rax\n    irmovq $8, %r8\n    irmovq $1, %r9\n    andq %rsi, %rsi\n    jle done\nloop:\n    mrmovq (%rdi), %rdx   # load a[i]\n    addq %r8, %rdi        # independent work fills the load-use gap\n    addq %rdx, %rax       # now %rdx is ready: no stall\n    subq %r9, %rsi\n    jg loop\ndone:\n    halt'
+});
+
+// ---- P10: call / ret ----
+CodeWrite.problem(document.getElementById('p10'), {
+  prompt: '<p class="q">Write <code>sq</code>, a callee that returns <code>x·x</code> in <code>%rax</code>, and a caller that calls it and halts with the result in <code>%rax</code>.</p>',
+  given: '<code>%rdi</code> = x is set for you, and <code>%rsp</code> points at a usable stack. Execution starts at your first line. End <code>sq</code> with <code>ret</code>.',
+  setup: function (v) { return '    irmovq $' + v.x + ', %rdi\n    irmovq $0x7000, %rsp'; },
+  starter: 'main:\n    # %rdi = x. Call sq, then halt with x*x in %rax.\n    # TODO\n\nsq:\n    # returns %rdi * %rdi in %rax\n    # TODO\n    ret\n',
+  tests: [
+    { vars: { x: 5 }, label: 'sq(5)', want: 25 },
+    { vars: { x: 0 }, label: 'sq(0)', want: 0 },
+    { vars: { x: -3 }, label: 'sq(-3)', want: 9 },
+    { vars: { x: 12 }, label: 'sq(12)', want: 144 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: 'main:\n    call sq\n    halt\nsq:\n    rrmovq %rdi, %rax\n    mulq %rdi, %rax       # rax = x * x\n    ret'
 });
 </script>
 </body>
