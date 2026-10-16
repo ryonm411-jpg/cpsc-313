@@ -299,7 +299,7 @@
       rows: rows, events: events, notes: notes,
       dataStalls: dataStalls, controlStalls: controlStalls, squashed: squashed,
       lost: bubbles, instructions: count, cycles: lastW,
-      cpi: (count + bubbles) / count, regs: R
+      cpi: (count + bubbles) / count, regs: R, mem: mem
     };
   }
 

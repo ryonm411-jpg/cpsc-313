@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Write Your Own Y86</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Quiz 2 · Lesson 9 · the coding question</div>
+  <h1>Write Your Own Y86</h1>
+  <p class="subtitle">Six problems where <em>you</em> write the code. Type it, hit Run, and it's checked against several inputs — then you see exactly how your program behaves in the pipeline. This is the "write a program and predict its pipeline behaviour" goal, practised for real.</p>
+</header>
+
+<div class="callout key">
+  <span class="label">How this works</span>
+  Each problem has an editor pre-loaded with a skeleton. Write your solution, press <strong>Run &amp; check</strong>, and it runs your code through the Y86 interpreter on several test inputs. Green = all cases pass. On success you get the pipeline read-out (instructions, bubbles, CPI). <strong>Show solution</strong> reveals one correct version — only after you've tried.
+</div>
+
+<h2>A method for writing Y86 (use it on every problem)</h2>
+<p>You struggle to start from a blank editor. Don't start blank — start from this skeleton and fill the blanks. Almost every Quiz 2 coding problem is "initialise, loop over something, combine, finish":</p>
+
+<pre><code># 1. Put each C variable in a register. Arguments arrive in %rdi, %rsi, %rdx, …; result leaves in %rax.
+# 2. Materialise every constant you need (irmovq) — you can't use $imm in addq/subq.
+# 3. Guard the loop so the body can be skipped (handles the n = 0 case).
+# 4. Body: do the work, advance the pointer/counter.
+# 5. Test and branch back. Remember subq is destructive and there is no cmpq.
+
+    irmovq $0, %rax        # result accumulator
+    irmovq $8, %r8         # stride (8 bytes per long), if walking an array
+    irmovq $1, %r9         # the constant 1, for counting
+    andq %rsi, %rsi        # test the count WITHOUT destroying it (n & n = n)
+    jle done               # body runs zero times if n <= 0
+loop:
+    # ... the work ...
+    addq %r8, %rdi         # a++  (advance pointer by 8)
+    subq %r9, %rsi         # n--  (and this sets the flags on the new n)
+    jg loop                # repeat while n > 0
+done:
+    halt</code></pre>
+
+<div class="callout">
+  <span class="label">The four rules that bite in the pipeline too</span>
+  <ol>
+    <li><strong>No <code>$imm</code> in arithmetic.</strong> <code>addq $1, %rsi</code> is illegal — load 1 into a register first.</li>
+    <li><strong><code>subq %rA, %rB</code> writes <code>%rB</code>.</strong> To <em>compare</em> without losing a value, use <code>andq %rX, %rX</code> (test against 0) or subtract into a scratch copy.</li>
+    <li><strong>Only <code>OPq</code> sets condition codes.</strong> A <code>jle</code> reads the flags from the most recent <code>addq/subq/andq</code>, not from a <code>mrmovq</code> or <code>rrmovq</code>.</li>
+    <li><strong>Loads feed uses one cycle late.</strong> An <code>mrmovq</code> immediately followed by an instruction that uses its result costs a load/use bubble — the pipeline read-out will show it. You'll exploit this in Problem 6.</li>
+  </ol>
+</div>
+
+<!-- ============ P1 ============ -->
+<h2>Problem 1 · <code>max(a, b)</code> — a conditional jump</h2>
+<div id="p1"></div>
+
+<!-- ============ P2 ============ -->
+<h2>Problem 2 · sum 1…n — a guarded loop</h2>
+<div id="p2"></div>
+
+<!-- ============ P3 ============ -->
+<h2>Problem 3 · sum an array — walking a pointer</h2>
+<div id="p3"></div>
+
+<!-- ============ P4 ============ -->
+<h2>Problem 4 · sum only the positive elements — a branch inside the loop</h2>
+<div id="p4"></div>
+
+<!-- ============ P5 ============ -->
+<h2>Problem 5 · add 10 to every element, in place — storing to memory</h2>
+<div id="p5"></div>
+
+<!-- ============ P6 ============ -->
+<h2>Problem 6 · schedule away the stalls — same result, fewer bubbles</h2>
+<p>This one is pure Quiz 2: the starter code is <em>correct</em> but <em>stalls</em> — each <code>addq</code> waits for the <code>mrmovq</code> right above it (a load/use hazard). Reorder the instructions so your result is unchanged but the pipeline read-out shows <strong>0 data-stall bubbles</strong>. The checker confirms correctness; <em>you</em> read the bubble count.</p>
+<div id="p6"></div>
+
+<div class="callout key">
+  <span class="label">Where these show up on the quiz</span>
+  Problems 1 and 6 are the heart of "write a program with a conditional jump / schedule it and predict the pipeline behaviour." Count the bubbles each one reports and practise saying <em>why</em> (control hazard on the jump; load/use hazards before you reorder). Then try changing the predictor in your head: would <code>always-taken</code> vs <code>BTFNT</code> change the squash count?
+</div>
+
+<p class="ask">Stuck on one, or want a problem shaped like a specific past question (recursion, a <code>call</code>/<code>ret</code>, heapsort-style swaps)? Paste it in the terminal and I'll add it.</p>
+
+<nav class="lesson-nav">
+  <a href="0008-pipeline-problem-workout.html">← Lesson 8: Pipeline problem workout</a>
+  <a href="../reference/0002-y86-optimization-playbook.html">Optimization playbook</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/codewrite.js"></script>
+<script>
+// ---- shared setup builders ----
+function arr(vars) {
+  var s = 'arr:\n';
+  vars.data.forEach(function (v) { s += '    .quad ' + v + '\n'; });
+  s += '    irmovq arr, %rdi\n';
+  if (vars.len !== undefined) s += '    irmovq $' + vars.len + ', %rsi\n';
+  return s;
+}
+function rax(res) { return res.reg('rax'); }
+
+// ---- P1: max ----
+CodeWrite.problem(document.getElementById('p1'), {
+  prompt: '<p class="q">Write <code>max(a, b)</code>: leave the larger of the two in <code>%rax</code>, then <code>halt</code>.</p>',
+  given: '<code>%rdi</code> = a, <code>%rsi</code> = b (both may be negative). Result in <code>%rax</code>.',
+  setup: function (v) { return '    irmovq $' + v.a + ', %rdi\n    irmovq $' + v.b + ', %rsi'; },
+  starter: 'max:\n    # %rdi = a, %rsi = b. Put the larger in %rax, then halt.\n    # TODO\n    halt\n',
+  tests: [
+    { vars: { a: 3, b: 7 }, label: 'max(3, 7)', want: 7 },
+    { vars: { a: 7, b: 3 }, label: 'max(7, 3)', want: 7 },
+    { vars: { a: 5, b: 5 }, label: 'max(5, 5)', want: 5 },
+    { vars: { a: -4, b: -9 }, label: 'max(-4, -9)', want: -4 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: 'max:\n    rrmovq %rdi, %rax     # assume a is the answer\n    rrmovq %rdi, %r8\n    subq %rsi, %r8        # r8 = a - b  (scratch; keeps a and b)\n    jge done              # a >= b  ->  keep a\n    rrmovq %rsi, %rax     # else the answer is b\ndone:\n    halt'
+});
+
+// ---- P2: sum 1..n ----
+CodeWrite.problem(document.getElementById('p2'), {
+  prompt: '<p class="q">Compute <code>n + (n-1) + … + 1</code> in <code>%rax</code>. Must give 0 when n = 0.</p>',
+  given: '<code>%rdi</code> = n (n &ge; 0). Result in <code>%rax</code>.',
+  setup: function (v) { return '    irmovq $' + v.n + ', %rdi'; },
+  starter: 'sum:\n    # %rdi = n (n >= 0). Compute n+(n-1)+...+1 in %rax. Handle n = 0.\n    # TODO\n    halt\n',
+  tests: [
+    { vars: { n: 5 }, label: 'n = 5', want: 15 },
+    { vars: { n: 1 }, label: 'n = 1', want: 1 },
+    { vars: { n: 0 }, label: 'n = 0', want: 0 },
+    { vars: { n: 10 }, label: 'n = 10', want: 55 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: 'sum:\n    irmovq $0, %rax\n    irmovq $1, %r9\n    andq %rdi, %rdi       # test n without destroying it\n    jle done              # n <= 0  ->  answer 0\nloop:\n    addq %rdi, %rax       # rax += n\n    subq %r9, %rdi        # n--\n    jg loop               # while n > 0\ndone:\n    halt'
+});
+
+// ---- P3: array sum ----
+CodeWrite.problem(document.getElementById('p3'), {
+  prompt: '<p class="q">Sum the elements of a <code>long</code> array into <code>%rax</code>. Give 0 for an empty array.</p>',
+  given: '<code>%rdi</code> points at the first element, <code>%rsi</code> = length (&ge; 0). Result in <code>%rax</code>.',
+  setup: arr,
+  starter: 'asum:\n    # %rdi -> array, %rsi = length. Sum into %rax. Handle length 0.\n    # TODO\n    halt\n',
+  tests: [
+    { vars: { data: [3, 1, 4, 1, 5], len: 5 }, label: '[3,1,4,1,5]', want: 14 },
+    { vars: { data: [10], len: 1 }, label: '[10]', want: 10 },
+    { vars: { data: [99], len: 0 }, label: 'length 0', want: 0 },
+    { vars: { data: [-2, 5, -3], len: 3 }, label: '[-2,5,-3]', want: 0 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: 'asum:\n    irmovq $0, %rax\n    irmovq $8, %r8\n    irmovq $1, %r9\n    andq %rsi, %rsi\n    jle done\nloop:\n    mrmovq (%rdi), %rdx   # load a[i]\n    addq %rdx, %rax\n    addq %r8, %rdi        # a++\n    subq %r9, %rsi        # len--\n    jg loop\ndone:\n    halt'
+});
+
+// ---- P4: sum positives ----
+CodeWrite.problem(document.getElementById('p4'), {
+  prompt: '<p class="q">Sum only the <strong>strictly positive</strong> elements (&gt; 0) into <code>%rax</code>.</p>',
+  given: '<code>%rdi</code> -> array, <code>%rsi</code> = length. Result in <code>%rax</code>.',
+  setup: arr,
+  starter: 'spos:\n    # %rdi -> array, %rsi = length. Sum the elements > 0 into %rax.\n    # TODO\n    halt\n',
+  tests: [
+    { vars: { data: [3, -1, 4, -9, 5], len: 5 }, label: '[3,-1,4,-9,5]', want: 12 },
+    { vars: { data: [-2, -3], len: 2 }, label: '[-2,-3]', want: 0 },
+    { vars: { data: [7], len: 1 }, label: '[7]', want: 7 },
+    { vars: { data: [0, 0, 6], len: 3 }, label: '[0,0,6]', want: 6 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: 'spos:\n    irmovq $0, %rax\n    irmovq $8, %r8\n    irmovq $1, %r9\n    andq %rsi, %rsi\n    jle done\nloop:\n    mrmovq (%rdi), %rdx\n    andq %rdx, %rdx       # test the element\n    jle skip              # <= 0  ->  don\'t add it\n    addq %rdx, %rax\nskip:\n    addq %r8, %rdi\n    subq %r9, %rsi\n    jg loop\ndone:\n    halt'
+});
+
+// ---- P5: add 10 in place ----
+CodeWrite.problem(document.getElementById('p5'), {
+  prompt: '<p class="q">Add 10 to <strong>every</strong> element of the array, in place (write the results back to memory), then <code>halt</code>.</p>',
+  given: '<code>%rdi</code> -> array, <code>%rsi</code> = length. No return value — the checker inspects memory.',
+  setup: arr,
+  starter: 'addten:\n    # %rdi -> array, %rsi = length. Add 10 to each element, in place.\n    # TODO\n    halt\n',
+  tests: [
+    { vars: { data: [5, 0, -3, 100], len: 4, i: 0 }, label: 'a[0]: 5 -> 15', want: 15 },
+    { vars: { data: [5, 0, -3, 100], len: 4, i: 1 }, label: 'a[1]: 0 -> 10', want: 10 },
+    { vars: { data: [5, 0, -3, 100], len: 4, i: 2 }, label: 'a[2]: -3 -> 7', want: 7 },
+    { vars: { data: [5, 0, -3, 100], len: 4, i: 3 }, label: 'a[3]: 100 -> 110', want: 110 }
+  ],
+  check: function (res, v) { return { got: res.word(v.i), want: v.want }; },
+  solution: 'addten:\n    irmovq $8, %r8\n    irmovq $1, %r9\n    irmovq $10, %r10\n    andq %rsi, %rsi\n    jle done\nloop:\n    mrmovq (%rdi), %rdx   # load a[i]\n    addq %r10, %rdx       # + 10\n    rmmovq %rdx, (%rdi)   # store it back\n    addq %r8, %rdi\n    subq %r9, %rsi\n    jg loop\ndone:\n    halt'
+});
+
+// ---- P6: schedule away stalls ----
+CodeWrite.problem(document.getElementById('p6'), {
+  prompt: '<p class="q">Compute <code>a[0] + a[1] + a[2]</code> in <code>%rax</code>. The starter is correct but stalls. Reorder it so the result is the same and the pipeline read-out shows <strong>0 data-stall bubbles</strong>.</p>',
+  given: '<code>%rdi</code> -> a 3-element array. Result in <code>%rax</code>. Hint: issue the loads first, then the adds.',
+  setup: function (v) { var s = 'arr:\n'; v.data.forEach(function (x) { s += '    .quad ' + x + '\n'; }); return s + '    irmovq arr, %rdi'; },
+  starter: '    # Correct but STALLS: each addq waits on the mrmovq right above it.\n    # Reorder for 0 data-stall bubbles, same result.\n    irmovq $0, %rax\n    mrmovq 0(%rdi), %r8\n    addq %r8, %rax\n    mrmovq 8(%rdi), %r9\n    addq %r9, %rax\n    mrmovq 16(%rdi), %r10\n    addq %r10, %rax\n    halt\n',
+  tests: [
+    { vars: { data: [10, 20, 30] }, label: '[10,20,30]', want: 60 },
+    { vars: { data: [1, 2, 3] }, label: '[1,2,3]', want: 6 },
+    { vars: { data: [-5, 5, 100] }, label: '[-5,5,100]', want: 100 }
+  ],
+  check: function (res, v) { return { got: rax(res), want: v.want }; },
+  solution: '    irmovq $0, %rax\n    mrmovq 0(%rdi), %r8    # issue all three loads first ...\n    mrmovq 8(%rdi), %r9\n    mrmovq 16(%rdi), %r10\n    addq %r8, %rax         # ... so each value is ready by the time it is used\n    addq %r9, %rax\n    addq %r10, %rax\n    halt'
+});
+</script>
+</body>
+</html>
