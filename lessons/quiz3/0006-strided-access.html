@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strided Access</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 6</div>
+  <h1>Strided Access</h1>
+  <p class="subtitle">How far apart your accesses are decides how much of each cache line you use.</p>
+</header>
+
+<p><strong>Your win for today:</strong> work out hit rates from a stride, read a stride from a trace (R3.12), and handle arrays slightly bigger than the cache (R3.13). About 25 minutes.</p>
+<h2>Warm-up: recall</h2>
+<div class="quiz" data-answer="0"><p class="q">A 64-byte-line cache reads one byte, then the next 63 bytes. Which locality gives those 63 hits?</p><ol class="opts"><li>Spatial locality alone</li><li>Temporal locality alone</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>Different but nearby bytes, loaded together on the first miss. <a href="0001-address-bits-and-access-time.html">Lesson 1</a>.</p></div></div>
+
+<h2>1 · Stride and hit rate</h2>
+<p><strong>Stride</strong> is the distance between consecutive accesses. For a line-aligned first pass:</p>
+<div class="callout key"><span class="label">Rule</span>
+stride ≥ line size: every access misses.<br>
+stride &lt; line size: one miss per line, so with L/s accesses per line, hit rate = 1 − s/L.</div>
+<div class="quiz numeric" data-answer="0.9375" data-tol="0.0005"><p class="q">An <code>int</code> array (4 bytes), every element, 64-byte lines, cold cache. Hit rate? (4 decimals)</p><div class="why"><p>1 − 4/64 = 15/16.</p></div></div>
+<div class="quiz numeric" data-answer="0"><p class="q">A struct of 72 bytes, reading one field from each, 64-byte lines. Hit rate on the first pass?</p><div class="why"><p>The stride is 72 ≥ 64, so every access lands in a new line. This is the <code>struct person</code> example in slides 3.6: 20+4+20+20+6+2 = 72 bytes.</p></div></div>
+
+<h2>2 · 2D arrays are row-major</h2>
+<p>C stores row 0, then row 1, and so on. Walking along a row has stride = element size. Walking down a column has stride = element size × columns. <span class="cite">Slides 3.6</span></p>
+<pre><code>double data[ROWS][TREES];   // same layout as the 1D array
+for (r...) use(data[r][42]);  // stride = TREES × 8 bytes</code></pre>
+<div class="quiz" data-answer="1"><p class="q">Linh reads one tree across all times, 100 trees per row. Switching from a 1D to a 2D array in C changes the stride how?</p><ol class="opts"><li>It drops to 8 bytes</li><li>It stays at 800 bytes</li><li>It rises to 1600 bytes</li><li>It drops to 100 bytes</li></ol><div class="why"><p>The 1D and 2D arrays have identical layouts. Only a column-major layout would help this analysis, and it would hurt Aaron's, so no layout is best for every workload.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Aaron's analysis reads about 4× more bytes than Linh's. Why did it take less time?</p><ol class="opts"><li>Its access is sequential</li><li>Its array is a lot smaller</li><li>It uses a better policy</li><li>It writes much less often</li></ol><div class="why"><p>Sequential access uses whole lines, and hardware prefetches them. Linh's analysis needs a new line for every 8-byte read.</p></div></div>
+
+<h2>3 · Reading a stride from a trace (R3.12)</h2>
+<p>Letters are consecutive lines. Count how many accesses land in each line:</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Pattern</th><th>Means</th></tr>
+<tr><td><code>A,C,E</code> (skips lines)</td><td>stride more than one line</td></tr>
+<tr><td><code>A,B,C</code></td><td>exactly one line</td></tr>
+<tr><td><code>A,A,B,C,C,D</code> (mix of 1 and 2)</td><td>between half a line and one line</td></tr>
+<tr><td><code>A,A,B,B,C,C</code></td><td>exactly half a line</td></tr>
+<tr><td>some lines get 3 or more</td><td>less than half a line</td></tr>
+</table></div>
+<p>Now capacity. <strong>A cycle through more lines than an LRU set holds misses every time</strong>, because each line is evicted just before it's needed. A direct-mapped cache only loses the lines that collide. Try <code>A,B,C,D,E,F</code>, 3 passes, in a cache of 4 lines:</p>
+<div class="quiz numeric" data-answer="0"><p class="q">Fully associative LRU, 4 lines. Hits?</p><div class="why"><p>6 lines cycling through 4 slots: LRU always evicts the next line needed. 0/18.</p></div></div>
+<div class="quiz numeric" data-answer="4"><p class="q">Direct-mapped, 4 lines. Hits?</p><div class="why"><p>A,E share a slot and B,F share a slot; they keep evicting each other. C and D hit on passes 2 and 3: 2 lines × 2 passes = 4 hits.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Same trace, but the cache holds 8 lines. Which gets more hits?</p><ol class="opts"><li>Fully associative LRU</li><li>The direct-mapped cache</li><li>It is exactly a tie</li><li>Not enough information</li></ol><div class="why"><p>Everything fits. Each gets 6 compulsory misses, then all hits: 12/18 for both.</p></div></div>
+
+<h2>4 · Slightly too big (R3.13)</h2>
+<p>A 32 KB cache: 128 sets, 8-way, 1024 lines of 32 bytes, LRU. Read a line-aligned array with stride 8 bytes, 500 times.</p>
+<ol class="steps">
+<li><strong>Exactly 32 KB:</strong> every line fits, so 1024 misses in total.</li>
+<li><strong>Extra lines wrap around.</strong> Lines are numbered 0, 1, 2…, and set = line number mod sets. Extra line number 1024 goes to set 0, the next to set 1, and so on.</li>
+<li><strong>Each set is its own story.</strong> A set holding 9 lines in 8 ways misses on <em>all 9</em>, every pass. A set with 8 lines misses only once each.</li>
+</ol>
+<div class="quiz numeric" data-answer="0"><p class="q">The array is 1 line bigger than the cache. Which set is the new line in?</p><div class="why"><p>Line number 1024, and 1024 mod 128 = 0.</p></div></div>
+<div class="quiz numeric" data-answer="49"><p class="q">The array is 50 lines bigger. Which set is the last line in?</p><div class="why"><p>Extra lines go to sets 0 to 49. A common off-by-one is to say 50.</p></div></div>
+<div class="quiz numeric" data-answer="225624"><p class="q">Still 50 extra lines, 500 passes. Total misses?</p><div class="why"><p>Sets 0–49 hold 9 lines each: 50 × 9 = 450 lines miss on each pass, so 450 × 500 = 225000. The other 78 sets hold 8 lines: 78 × 8 = 624 misses once. Total 225624. The stride of 8 doesn't change this, because the other accesses in a line always hit right after its miss.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Now use 64 sets and 16 ways, same size. What happens to the misses?</p><ol class="opts"><li>The misses increase</li><li>The misses decrease</li><li>The misses stay the same</li><li>Not enough information</li></ol><div class="why"><p>1074 lines over 64 sets: 50 sets now hold 17 lines in 16 ways, so 850 lines miss on every pass versus 450. Total 425224. More ways doesn't help here; it makes more lines thrash together.</p></div></div>
+
+<h2>5 · Measuring a cache</h2>
+<p>Plot access time against array size for random access. The time steps up each time the array outgrows a cache level, so the steps reveal each cache's size. <span class="cite">Slides 3.6</span></p>
+<p><strong>Drill.</strong></p>
+<div id="d1"></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.6.
+</div>
+<div class="callout key">
+  <span class="label">Now test it</span>
+  Try R3.12 and R3.13 on PrairieLearn from memory.
+</div>
+<p class="ask">If anything is unclear or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0005-write-policies.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0007-msi-and-mesi.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script>
+  Cache.stride(document.getElementById('d1'));
+</script>
+</body>
+</html>

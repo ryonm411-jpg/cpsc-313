@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MSI &amp; MESI</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 7</div>
+  <h1>MSI &amp; MESI</h1>
+  <p class="subtitle">Every cache keeps a state per line so the cores agree on its value while talking as little as possible.</p>
+</header>
+
+<p><strong>Your win for today:</strong> read a state transition off the diagram, track two cores, and name exactly where MSI and MESI differ. About 20 minutes.</p>
+<h2>Warm-up: recall</h2>
+<div class="quiz" data-answer="0"><p class="q">In a single-core write-back cache, which action does <em>not</em> communicate with the data source?</p><ol class="opts"><li>A write hit on a line</li><li>A read miss on a line</li><li>A write miss on a line</li><li>Evicting a dirty line</li></ol><div class="why"><p>It only sets the dirty bit. <a href="0005-write-policies.html">Lesson 5</a>.</p></div></div>
+
+<h2>1 · The states</h2>
+<p>A state replaces the valid and dirty bits, per line, per cache. Each core has its own state for the same line. <strong>Local</strong> means this core did it; <strong>remote</strong> means another core did.</p>
+<div class="table-scroll"><table class="data">
+<tr><th>State</th><th>Dirty?</th><th>Other caches may hold it?</th><th>Meaning</th></tr>
+<tr><td><strong>M</strong>odified</td><td>yes</td><td>no</td><td>Only I have it, and it differs from the source</td></tr>
+<tr><td><strong>E</strong>xclusive</td><td>no</td><td>no</td><td>Only I have it, and it matches the source (MESI only)</td></tr>
+<tr><td><strong>S</strong>hared</td><td>no</td><td>yes</td><td>Clean copy that others may also hold</td></tr>
+<tr><td><strong>I</strong>nvalid</td><td>n/a</td><td>yes</td><td>Not in this cache</td></tr>
+</table></div>
+<h2>2 · Transitions</h2>
+<p>Next state, from the course diagrams. <span class="cite">Slides 3.7, MESI diagram</span></p>
+<div class="table-scroll"><table class="data">
+<tr><th>From</th><th>Local read</th><th>Local write</th><th>Remote read</th><th>Remote write</th></tr>
+<tr><td><strong>M</strong></td><td>M</td><td>M</td><td>MESI: S, write back<br><strong>MSI: I</strong>, write back</td><td>I, write back</td></tr>
+<tr><td><strong>E</strong></td><td>E</td><td>M, <strong>no message</strong></td><td>S</td><td>I</td></tr>
+<tr><td><strong>S</strong></td><td>S</td><td>M, sends invalidate</td><td>S</td><td>I</td></tr>
+<tr><td><strong>I</strong></td><td>MESI: E if alone, else S<br>MSI: S</td><td>M, sends invalidate</td><td>I</td><td>I</td></tr>
+</table></div>
+<div class="callout key"><span class="label">Why E exists</span>
+Read, then write, is common for private data. MSI goes I → S → M, so the write hit must send an invalidate that nobody needs. MESI goes I → E → M, and that write is silent.</div>
+<div class="callout"><span class="label">Course-specific: remote read on M</span>
+The course's MSI diagram has <em>Remote R/W</em> taking M to I, whereas its MESI diagram takes M to S on a remote read. Many other sources draw MSI with M → S. Use the course's version. The two protocols therefore differ in exactly two ways for a given start state:<br>
+1. A local read miss when no other cache has the line: MSI gives S, MESI gives E.<br>
+2. A remote read while in M: MSI gives I, MESI gives S.</div>
+<div class="quiz" data-answer="1"><p class="q">A core holds a line in S and gets a write hit. Does it communicate?</p><ol class="opts"><li>No; hits never communicate</li><li>Yes; S must send invalidate</li><li>No; S lines are always clean</li><li>Yes; S must write the source</li></ol><div class="why"><p>S means others may hold copies, so it must invalidate them. M and E hits are silent, which is why slides 3.7 say “maybe” for write hits in general.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Under MSI vs MESI from the same start state, which action can leave Core 1 in a different state?</p><ol class="opts"><li>Core 1 read hit</li><li>Core 1 write hit</li><li>Core 2 reads line</li><li>Core 2 writes line</li></ol><div class="why"><p>If Core 1 is in M, MSI gives I and MESI gives S. Read hits never change state, a write hit always ends in M, and a remote write always ends in I.</p></div></div>
+
+<h2>3 · Which pairs can exist? (R3.14)</h2>
+<div class="callout key"><span class="label">Read the question carefully</span>
+<strong>Same address:</strong> at most one cache can be in M or E. The possible pairs are I with anything, or S with S. <br>
+<strong>Same slot (same index only):</strong> the two caches may hold different tags, meaning different lines, so <em>any</em> pair is possible.</div>
+<div class="quiz" data-answer="3"><p class="q">Two MESI caches, same address. Which pair is possible?</p><ol class="opts"><li>M and S</li><li>E and E</li><li>M and M</li><li>S and S</li></ol><div class="why"><p>M and E are exclusive by definition, so they can pair only with I.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">Two MESI caches, same slot, same index but no statement about tags. Which pair is impossible?</p><ol class="opts"><li>M and M</li><li>E and S</li><li>M and E</li><li>None of them</li></ol><div class="why"><p>Different tags are different lines, so the states are unrelated.</p></div></div>
+
+<p><strong>Drill: one cache's next state.</strong></p>
+<div id="d1"></div>
+<p><strong>Drill: two cores.</strong></p>
+<div id="d2"></div>
+<h2>4 · Alternatives</h2>
+<p>Instead of broadcasting, <strong>directory-based coherence</strong> keeps state centrally, with which processors hold each line, and sends messages only to the affected cores. <span class="cite">Slides 3.7</span></p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.7 and the MESI transition diagram (available in the quiz).
+</div>
+<div class="callout key">
+  <span class="label">Now test it</span>
+  Try R3.14 and R3.15 on PrairieLearn from memory, then sketch the MSI diagram from memory.
+</div>
+<p class="ask">If anything is unclear or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0006-strided-access.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0008-parallelism-and-hazards.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script>
+  Cache.coherence(document.getElementById('d1'));
+  Cache.pairs(document.getElementById('d2'));
+</script>
+</body>
+</html>

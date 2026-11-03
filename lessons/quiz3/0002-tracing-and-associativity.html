@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracing Hits &amp; Misses, and Associativity</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 2</div>
+  <h1>Tracing Hits &amp; Misses, and Associativity</h1>
+  <p class="subtitle">Each set is its own small cache. Once you see that, tracing becomes mechanical.</p>
+</header>
+
+<p><strong>Your win for today:</strong> trace a list of addresses through a direct-mapped or 2-way cache, and reason about changes to its parameters (R3.5). About 20 minutes.</p>
+
+<h2>Warm-up: recall</h2>
+<div class="quiz numeric" data-answer="7"><p class="q">A 2-way, 4 KB cache has 16-byte lines. How many index bits?</p><div class="why"><p>4096 ÷ 16 = 256 slots. 256 ÷ 2 = 128 sets. log₂(128) = 7.</p></div></div>
+
+
+<h2>1 · One cache, three shapes</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Shape</th><th>Sets</th><th>Slots per set</th><th>A line can go in</th></tr>
+<tr><td>Direct-mapped</td><td>n</td><td>1</td><td>exactly 1 slot</td></tr>
+<tr><td>k-way set associative</td><td>n/k</td><td>k</td><td>any of k slots in 1 set</td></tr>
+<tr><td>Fully associative</td><td>1</td><td>n</td><td>any slot (0 index bits)</td></tr>
+</table></div>
+<p>A direct-mapped cache is “1-way”, and each set behaves like its own little fully associative cache. The number of sets must be a power of 2; the number of ways need not be. <span class="cite">Slides 3.3</span></p>
+
+<h2>2 · Worked trace</h2>
+<p>16-byte lines mean the last hex digit is the offset, so <code>0x04</code> is in the same line as <code>0x00</code>. Trace <code>0x00, 0x04, 0x10, 0x40, 0x00, 0x44</code>:</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Address</th><th>Line</th><th>Direct-mapped, 4 sets</th><th>2-way LRU, 2 sets</th></tr>
+<tr><td><code>0x00</code></td><td>0x00</td><td>set 0: miss</td><td>set 0: miss</td></tr>
+<tr><td><code>0x04</code></td><td>0x00</td><td>set 0: <strong>hit</strong></td><td>set 0: <strong>hit</strong></td></tr>
+<tr><td><code>0x10</code></td><td>0x10</td><td>set 1: miss</td><td>set 1: miss</td></tr>
+<tr><td><code>0x40</code></td><td>0x40</td><td>set 0: miss, evicts 0x00</td><td>set 0: miss, both fit</td></tr>
+<tr><td><code>0x00</code></td><td>0x00</td><td>set 0: miss, evicts 0x40</td><td>set 0: <strong>hit</strong></td></tr>
+<tr><td><code>0x44</code></td><td>0x40</td><td>set 0: miss, evicts 0x00</td><td>set 0: <strong>hit</strong></td></tr>
+</table></div>
+<p>Same size, but 1/6 hits versus 3/6. Lines <code>0x00</code> and <code>0x40</code> take turns evicting each other in the direct-mapped cache.</p>
+<div class="callout"><span class="label">Kinds of miss</span>
+<strong>Compulsory:</strong> first access to that line, ever.<br>
+<strong>Capacity:</strong> the cache is too small for what you are using. <span class="cite">Slides 3.3</span><br>
+<strong>Conflict:</strong> there was room elsewhere, but the line's set was full, as with <code>0xBE</code> and <code>0xFA</code>. <span class="cite">Slides 3.2</span></div>
+<div class="quiz" data-answer="1"><p class="q">In the direct-mapped column, what kind of miss is the second access to <code>0x00</code>?</p><ol class="opts"><li>A compulsory miss</li><li>A conflict miss</li><li>A capacity miss</li><li>A cold-start miss</li></ol><div class="why"><p>It was cached before, and slots 2 and 3 were free. Only the mapping forced the eviction.</p></div></div>
+
+<p><strong>Drill.</strong> Do five. Mark the hits first, then check.</p>
+<div id="d1"></div>
+
+<h2>3 · Changing parameters (R3.5)</h2>
+<div class="callout key"><span class="label">Two equations that must stay true</span>
+address bits = t + s + b<br>
+cache size = sets × ways × line size</div>
+<p>Change one value, then ask what must move to keep both true. Fewer index bits means fewer sets. So tag or offset bits must grow, and to keep the second equation true the size must shrink, or the ways or line size must grow.</p>
+<div class="quiz" data-answer="2"><p class="q">You <em>increase</em> the index bits, keeping the address width fixed. Which change can be part of a sensible way to keep things consistent?</p><ol class="opts"><li>The associativity increases</li><li>The tag bits are increased</li><li>The overall size increases</li><li>The line size is increased</li></ol><div class="why"><p>More sets with the same ways and line size means a bigger cache. Index bits went up, so tag or offset bits must go <em>down</em>, which rules out the tag and line-size options. More ways would grow the cache even further and doesn't help anything.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Double the line size, keeping the size and ways fixed. What happens to the bits?</p><ol class="opts"><li>offset +1, index −1, tag same</li><li>offset +1, index same, tag −1</li><li>offset −1, index +1, tag same</li><li>offset +1, index +1, tag −2</li></ol><div class="why"><p>Twice the line size gives half as many slots, so half as many sets. One bit moves from index to offset.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Which is <em>not</em> stored as metadata in a slot of a write-back, set-associative LRU cache?</p><ol class="opts"><li>The valid bit</li><li>The dirty bit</li><li>The index bits</li><li>The tag bits</li></ol><div class="why"><p>The index is implied by which set the slot sits in. Slides 3.5 list valid, tag, dirty and replacement information.</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.2 and the Associativity Summary in slides 3.3, then CS:APP 3e §6.4.
+</div>
+<div class="callout key">
+  <span class="label">Now test it</span>
+  Try R3.5 and R3.6 on PrairieLearn from memory.
+</div>
+<p class="ask">If anything is unclear or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0001-address-bits-and-access-time.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0003-replacement-policies.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script>
+  Cache.access(document.getElementById('d1'));
+</script>
+</body>
+</html>

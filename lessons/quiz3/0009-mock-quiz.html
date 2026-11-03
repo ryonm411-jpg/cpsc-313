@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 3 Mock</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 9</div>
+  <h1>Mock Quiz 3</h1>
+  <p class="subtitle">Every Quiz 3 goal, mixed together, with fresh numbers.</p>
+</header>
+<div class="callout key">
+  <span class="label">How to take it</span>
+  Set a 50-minute timer. Use only paper, a calculator and the quiz reference sheets: <a href="../../../summary-of-cache-parameters.pdf">cache parameters</a>, <a href="../../../amdahls-reference.pdf">Amdahl's Law</a> and the <a href="../../../diagramMESI.pdf">MESI diagram</a>. Each answer is marked immediately, so write your reasoning first. Go back to the lesson for anything you miss. This is my own practice set, not a copy of the real quiz.
+</div>
+<h3>1 · Hierarchy</h3>
+<div class="quiz" data-answer="0"><p class="q">Which order runs from fastest to slowest?</p><ol class="opts"><li>Registers, L1, L3, DRAM, SSD</li><li>L1, registers, L3, DRAM, SSD</li><li>Registers, L3, L1, DRAM, SSD</li><li>Registers, L1, L3, SSD, DRAM</li></ol><div class="why"><p>Slides 3.1.</p></div></div>
+<h3>2 · Locality</h3>
+<div class="quiz" data-answer="2"><p class="q">A loop sums one small array over and over. Which locality does it show?</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>Nearby elements (spatial), and the same elements again on each pass (temporal).</p></div></div>
+<h3>3 · Bits</h3>
+<div class="quiz numeric" data-answer="8"><p class="q">A 4-way, 64 KB cache has 64-byte lines. How many index bits?</p><div class="why"><p>65536 ÷ 64 = 1024 slots. ÷ 4 = 256 sets. log₂(256) = 8.</p></div></div>
+<h3>4 · Bits</h3>
+<div class="quiz numeric" data-answer="34"><p class="q">Same cache, 48-bit addresses. How many tag bits?</p><div class="why"><p>48 − 8 − 6 = 34.</p></div></div>
+<h3>5 · Sets</h3>
+<div class="quiz" data-answer="0"><p class="q">A cache has 256 sets and 256-byte lines. Which address could be in set 0x4A?</p><ol class="opts"><li>0x12344A7F</li><li>0x1234A47F</li><li>0x4A123400</li><li>0x12344B7F</li></ol><div class="why"><p>The offset is the last two hex digits, and the index is the two digits before that. <code>0x12344A7F</code> has index 4A.</p></div></div>
+<h3>6 · Parameters</h3>
+<div class="quiz" data-answer="0"><p class="q">Keep the size, ways and address width fixed, and halve the line size. What happens?</p><ol class="opts"><li>index +1, offset −1, tag same</li><li>index −1, offset −1, tag +2</li><li>index same, offset −1, tag +1</li><li>index +1, offset +1, tag −2</li></ol><div class="why"><p>Half the line size gives twice the slots, so twice the sets. One bit moves from offset to index.</p></div></div>
+<h3>7 · Average</h3>
+<div class="quiz numeric" data-answer="0.86" data-tol="0.005"><p class="q">Memory alone takes 120 ns. A cache hit takes 4 ns, and a total miss takes 120 ns. What hit rate gives a memory-system speedup of 6? (2 decimals)</p><div class="why"><p>Target average = 20. 4h + 120(1 − h) = 20, so 116h = 100 and h ≈ 0.86.</p></div></div>
+<h3>8 · Multi-level</h3>
+<div class="quiz numeric" data-answer="155"><p class="q">L1 hit 5; L1↔L2 transfer 30; L2↔memory transfer 60; write-back. A read misses L1 (clean eviction) and misses L2 (dirty eviction). Time in ns?</p><div class="why"><p>60 + 60 + 30 + 5 = 155.</p></div></div>
+<h3>9 · Multi-level</h3>
+<div class="quiz numeric" data-answer="26" data-tol="0.01"><p class="q">Same caches. 50% hit L1. Of those that miss, 80% hit L2. All evictions clean. Average in ns? (2 decimals)</p><div class="why"><p>L2 hit = 35; L2 miss = 95. 0.5×5 + 0.5×(0.8×35 + 0.2×95) = 2.5 + 0.5×47 = 26.</p></div></div>
+<h3>10 · Amdahl</h3>
+<div class="quiz numeric" data-answer="120"><p class="q">A program takes 200 s and spends 50% of its time in a part made 5× faster. New time in s?</p><div class="why"><p>200 × (0.5 + 0.5/5) = 200 × 0.6 = 120.</p></div></div>
+<h3>11 · Replacement</h3>
+<div class="quiz numeric" data-answer="2"><p class="q">Fully associative, 2 slots, LRU, sequence A,B,A,C,B,C,A. How many hits?</p><div class="why"><p>A miss, B miss, A hit. C misses and evicts B. B misses and evicts A. C hits. A misses. Hits at accesses 3 and 6.</p></div></div>
+<h3>12 · Replacement</h3>
+<div class="quiz" data-answer="2"><p class="q">Which policy needs knowledge of future accesses?</p><ol class="opts"><li>Least recently used</li><li>Least frequently used</li><li>Belady's algorithm</li><li>Random replacement</li></ol><div class="why"><p>It evicts the line used farthest in the future, so it serves as a benchmark rather than a buildable policy.</p></div></div>
+<h3>13 · Writes</h3>
+<div class="quiz numeric" data-answer="50"><p class="q">Write-through, write-allocate. Cache 3 ns, source 25 ns. Latency of a write miss in ns?</p><div class="why"><p>One source write plus one source read: 25 + 25. The cache time is hidden. Slides 3.5, Example 2.</p></div></div>
+<h3>14 · Writes</h3>
+<div class="quiz numeric" data-answer="53"><p class="q">Write-back, write-allocate. Cache 3 ns, source 25 ns. Write miss evicting a dirty line, in ns?</p><div class="why"><p>25 + 25 + 3.</p></div></div>
+<h3>15 · Writes</h3>
+<div class="quiz numeric" data-answer="0.75" data-tol="0.005"><p class="q">Write-back, write-allocate: hit 5, clean miss 25. Write-through, no-allocate: every write 10. All evictions clean. Break-even hit rate? (2 decimals)</p><div class="why"><p>5h + 25(1 − h) = 10, so 20h = 15 and h = 0.75.</p></div></div>
+<h3>16 · Writes</h3>
+<div class="quiz" data-answer="1"><p class="q">Random writes across a huge array, never read back. Which miss policy suits it best?</p><ol class="opts"><li>Write-allocate always</li><li>No-write-allocate</li><li>Allocate on evict only</li><li>Allocate every other</li></ol><div class="why"><p>It avoids filling the cache with write-only data. Slides 3.4.</p></div></div>
+<h3>17 · Stride</h3>
+<div class="quiz numeric" data-answer="0.875" data-tol="0.0005"><p class="q"><code>double a[100][100]</code>, 64-byte lines, one pass, row by row, cold cache big enough to hold it. Hit rate? Assume line-aligned. (3 decimals)</p><div class="why"><p>Stride 8 in 64-byte lines: 8 accesses per line, 1 miss. 7/8.</p></div></div>
+<h3>18 · Stride</h3>
+<div class="quiz" data-answer="1"><p class="q">Same array, column by column. What is the stride, and do you get spatial hits?</p><ol class="opts"><li>8 bytes, and spatial hits</li><li>800 bytes, no spatial hits</li><li>100 bytes, no spatial hits</li><li>64 bytes, and spatial hits</li></ol><div class="why"><p>C is row-major, so neighbours in a column are one whole row apart: 100 × 8.</p></div></div>
+<h3>19 · Stride</h3>
+<div class="quiz" data-answer="3"><p class="q">Trace A,A,A,B,B,B,C,C,D,D,D. Letters are consecutive lines. What is the stride?</p><ol class="opts"><li>More than one line size</li><li>Exactly one line size</li><li>Exactly half a line size</li><li>Under half a line size</li></ol><div class="why"><p>At half a line, each line gets exactly 2 accesses. Some lines get 3 here, so the stride is smaller than that.</p></div></div>
+<h3>20 · Stride</h3>
+<div class="quiz numeric" data-answer="5216"><p class="q">Cache: 64 sets, 4-way, 16-byte lines. An array 10 lines larger than the cache, line-aligned, is read with stride 16, 100 times, LRU. Total misses?</p><div class="why"><p>256 + 10 = 266 lines. Sets 0–9 hold 5 lines: 50 lines miss on all 100 passes = 5000. The other 54 sets hold 216 lines, each missing once. Total 5216.</p></div></div>
+<h3>21 · Coherence</h3>
+<div class="quiz" data-answer="1"><p class="q">MESI. A line is in E in this cache, and another core reads it. New state?</p><ol class="opts"><li>M, and it writes back</li><li>S, with no write-back</li><li>I, with no write-back</li><li>E, with no change at all</li></ol><div class="why"><p>E is clean, so no write-back; a second copy now exists, so S.</p></div></div>
+<h3>22 · Coherence</h3>
+<div class="quiz" data-answer="1"><p class="q">In MSI on the course diagram, a line is in M, and another core reads it. New state?</p><ol class="opts"><li>S, after a write-back</li><li>I, after a write-back</li><li>M, with no message sent</li><li>S, with no write-back</li></ol><div class="why"><p>Remote R/W takes M to I in the course MSI. MESI would give S.</p></div></div>
+<h3>23 · Coherence</h3>
+<div class="quiz" data-answer="1"><p class="q">What is the advantage of MESI over MSI?</p><ol class="opts"><li>Read hits become cheaper</li><li>A silent write after a sole read</li><li>Evictions become free</li><li>Fewer states to store</li></ol><div class="why"><p>E → M needs no invalidate.</p></div></div>
+<h3>24 · Coherence</h3>
+<div class="quiz" data-answer="1"><p class="q">Two MESI caches, same address. Which pair can occur?</p><ol class="opts"><li>E and S</li><li>E and I</li><li>M and S</li><li>M and E</li></ol><div class="why"><p>M and E can pair only with I.</p></div></div>
+<h3>25 · Parallelism</h3>
+<div class="quiz" data-answer="1"><p class="q">A GPU applying one operation to many pixels is best described as…</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>One instruction, many data values.</p></div></div>
+<h3>26 · Hazards</h3>
+<div class="quiz numeric" data-answer="1"><p class="q">Stalling and forwarding, no prediction: <code>mrmovq 0(%rax), %rbx</code> followed by <code>addq %rbx, %rcx</code>. Stalls?</p><div class="why"><p>Load/use costs 1 even with forwarding.</p></div></div>
+<h3>27 · Hazards</h3>
+<div class="quiz numeric" data-answer="3"><p class="q">Stalling only, with no forwarding or prediction: a <code>ret</code>. Stalls?</p><div class="why"><p>The return address is known only after Memory.</p></div></div>
+
+<p class="ask">Tell me which ones you missed, in the terminal, and I'll build the next session around them.</p>
+<nav class="lesson-nav">
+  <a href="0008-parallelism-and-hazards.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

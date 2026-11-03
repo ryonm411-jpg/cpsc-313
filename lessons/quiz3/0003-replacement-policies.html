@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Replacement Policies</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 3</div>
+  <h1>Replacement Policies</h1>
+  <p class="subtitle">When a set is full, something has to go. The policy decides what.</p>
+</header>
+
+<p><strong>Your win for today:</strong> trace any sequence under any policy, and say which workload each policy suits. About 15 minutes.</p>
+<h2>Warm-up: recall</h2>
+<div class="quiz" data-answer="0"><p class="q">Why does a direct-mapped cache not need a replacement policy?</p><ol class="opts"><li>Each line has only 1 slot</li><li>It never has any misses</li><li>Its lines are never dirty</li><li>All its sets are always full</li></ol><div class="why"><p>A line can go in one slot only, so the choice is already made. <a href="0002-tracing-and-associativity.html">Lesson 2</a>.</p></div></div>
+
+<h2>1 · The policies</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Policy</th><th>Evict the line…</th><th>Know this</th></tr>
+<tr><td><strong>Belady</strong></td><td>used farthest in the future</td><td>Ideal but needs the future, so it's the benchmark.</td></tr>
+<tr><td><strong>LRU</strong></td><td>used farthest in the past</td><td>Frequently good. A cycle just bigger than the cache gives 0 hits.</td></tr>
+<tr><td><strong>LFU</strong></td><td>with the smallest use count</td><td>Sometimes better than LRU. Needs a count per line.</td></tr>
+<tr><td><strong>MRU</strong></td><td>used most recently</td><td>Suits cyclic scans bigger than the cache. Poor for typical temporal locality.</td></tr>
+<tr><td><strong>Random</strong></td><td>at random</td><td>Often used in hardware, where fancy policies cost too much.</td></tr>
+</table></div>
+<p>There is no perfect policy: for anything but Belady, you can build an adversarial workload. <span class="cite">Slides 3.3</span></p>
+<h2>2 · Worked example (2 slots, fully associative)</h2>
+<pre>A A C A C B B B A A B C</pre>
+<p><strong>LRU.</strong> A and C load with 3 hits along the way. At the first B, C was used more recently than A, so A goes. At the next A, B was used more recently, so C goes. At the final C, B was used more recently, so A goes. Result: <strong>7/12</strong>.</p>
+<p><strong>LFU.</strong> At the first B, the counts are A=3, C=2, so C goes. At the final C, the counts are A=5, B=4, so B goes, and C comes back with a count of 1. Result: <strong>8/12</strong>. The slide shows counts restarting after eviction, and the drills do the same.</p>
+<p><strong>Belady.</strong> At the first B, A is next used sooner than C, so C goes. At the final C nothing else is used again, so any eviction works. Result: <strong>8/12</strong>.</p>
+<div class="quiz" data-answer="0"><p class="q">Fully associative, 2 slots, LRU. Which sequence gives a hit rate of 0?</p><ol class="opts"><li>A,B,C,A,B,C,A,B,C</li><li>A,B,A,B,C,A,B,A,B</li><li>A,A,B,B,C,C,A,A,B</li><li>A,B,A,C,A,B,A,C,A</li></ol><div class="why"><p>Each access evicts exactly the line needed next. That is the adversarial workload from slides 3.3.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Same cache, sequence A,B,C,A,B,C. Which policy gets more hits?</p><ol class="opts"><li>LRU gets 2 hits, MRU none</li><li>MRU gets 2 hits, LRU none</li><li>Both policies get 2 hits</li><li>Both policies get 0 hits</li></ol><div class="why"><p>LRU always throws out what is coming next. MRU keeps A: at C it evicts B, then A hits, B misses and evicts A, then C hits.</p></div></div>
+
+<p><strong>Drill.</strong> Random policies. Get five in a row.</p>
+<div id="d1"></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.3. MRU is on the learning goals, but the slides don't cover it; check P14 for its exact wording.
+</div>
+<div class="callout key">
+  <span class="label">Now test it</span>
+  Trace the slide sequence <code>A,A,C,A,C,B,B,B,A,A,B,C</code> on paper under Belady, LRU and LFU. You should get 8/12, 7/12 and 8/12.
+</div>
+<p class="ask">If anything is unclear or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0002-tracing-and-associativity.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0004-amdahl-and-multilevel.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script>
+  Cache.trace(document.getElementById('d1'));
+</script>
+</body>
+</html>

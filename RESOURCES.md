@@ -23,3 +23,12 @@
 ## Gaps
 
 - No confirmed statement yet of the course's exact CPI convention (fill cycles included or not).
+
+## Quiz 3 (Unit 3)
+
+- Course slides 2.6, 3.1-3.7 (in the parent folder `cpsc-313/`)
+  The authority for Quiz 3. Note the course MSI diagram in 3.7 differs from many other sources (M -> I on a remote read).
+- Quiz references: `summary-of-cache-parameters.pdf`, `amdahls-reference.pdf`, `diagramMESI.pdf` (parent folder)
+  The sheets available during the quiz.
+- CS:APP 3e §6.2-6.4 (memory hierarchy and caches), §6.4.5 (writes), §1.9.1 (Amdahl's Law)
+  The readings listed on the slides, plus the book's Amdahl section.

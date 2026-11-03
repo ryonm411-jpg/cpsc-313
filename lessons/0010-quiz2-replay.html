@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 2 Replay</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 2 · Lesson 10 · Quiz 2 replay</div>
+  <h1>Quiz 2 Replay: the five question types</h1>
+  <p class="subtitle">One section for each question you remembered from Quiz 2. Each one has the method, then fresh practice in the same shape with different numbers.</p>
+</header>
+
+<div class="callout key">
+  <span class="label">How this was built</span>
+  The question shapes come from your description of the real quiz. The programs and numbers are new. Every stall, squash and forwarding answer was checked against this workspace's pipeline simulator (<code>y86pipe.js</code>), which follows the slide 2.3/2.4 rules. The 3-stage section (§4) depends on how I read the timing rules from your description. Those assumptions are written out there; if the real question worded them differently, tell me and I'll fix the section.
+</div>
+
+<ol class="steps">
+  <li><a href="#s1"><strong>Freeze at cycle N</strong></a>: naive pipeline vs. stalling pipeline (no forwarding).</li>
+  <li><a href="#s2"><strong>Where does the value get forwarded from?</strong></a> <code>e_valE</code>, <code>M_valE</code>, <code>W_valE</code>, <code>m_valM</code>, <code>W_valM</code>.</li>
+  <li><a href="#s3"><strong>Throughput: SEQ vs. PIPE</strong></a>.</li>
+  <li><a href="#s4"><strong>5 stages squeezed into 3</strong></a>: <code>|FD|EM|W|</code>.</li>
+  <li><a href="#s5"><strong>Stalls and squashes in a loop</strong></a>.</li>
+</ol>
+
+<!-- ============================================================ 1 -->
+<h2 id="s1">1 · Freeze the pipeline at cycle N</h2>
+
+<p><strong>The question:</strong> five instructions, "the processor has run 6 cycles". For each instruction, say which stage it is in, or whether it has <em>retired</em> or has <em>not started</em>. You answer once for a naive pipeline and once for a pipeline that stalls but doesn't forward.</p>
+
+<h3>(a) Naive pipeline: pure staircase</h3>
+<p>"Naive" means the pipeline does nothing about hazards. Nothing ever waits, so instruction <em>k</em> is fetched in cycle <em>k</em>:</p>
+<pre><code>stage of I<em>k</em> in cycle c  =  c − k      (0 = F, 1 = D, 2 = E, 3 = M, 4 = W)
+                         &lt; 0  → not started
+                         &gt; 4  → retired   (it finished W in an earlier cycle)</code></pre>
+<p>Cycle 6: I1 → 5 → <strong>retired</strong>, I2 → W, I3 → M, I4 → E, I5 → D. The program doesn't matter. The answer is always this diagonal.</p>
+
+<h3>(b) Stalling, no forwarding</h3>
+<p>The rule from slides 2.3: a consumer can't leave Decode until the producer has <em>finished</em> Write-back. While it waits, every instruction behind it waits too: the next one is stuck in Fetch, and anything after that hasn't started.</p>
+<table class="data">
+  <thead><tr><th>Producer → consumer distance</th><th>1 (adjacent)</th><th>2</th><th>3</th><th>4+</th></tr></thead>
+  <tbody><tr><td>Stalls (no forwarding)</td><td>3</td><td>2</td><td>1</td><td>0</td></tr></tbody>
+</table>
+<p>The stalled instruction shows up as <code>F D D D D E</code> on the slides, and the one behind it as <code>F F F F D</code>. Procedure: write out F/D/E/M/W cycles for each instruction in order, add stalls at each hazard, then read off the column for cycle N.</p>
+
+<div class="callout">
+  <span class="label">Two traps</span>
+  Count distance in <em>instructions</em>, not lines: a stall doesn't change the distance to later instructions, but it delays all of them. And "retired" means it finished W in an <em>earlier</em> cycle. An instruction in W during cycle 6 is still in W.
+</div>
+
+<p>Fill in both columns, then press Check. You'll get the cycle-by-cycle working and a diagram. "New program" gives a random one.</p>
+<div id="fz1"></div>
+<div id="fz2"></div>
+
+<!-- ============================================================ 2 -->
+<h2 id="s2">2 · Where does the value get forwarded from?</h2>
+
+<p>With forwarding, the consumer picks its operand up at the end of its Decode cycle from whichever producer is closest, ahead of it in the pipe. Each forwarding name says <em>where the producer is</em> and <em>which value</em> it carries:</p>
+<table class="data">
+  <thead><tr><th>Source</th><th>Read it as</th><th>Producer is</th><th>Distance (no stall)</th></tr></thead>
+  <tbody>
+    <tr><td><code>e_valE</code></td><td>valE coming out of Execute <em>this cycle</em> (lower-case = a signal inside the stage)</td><td>ALU op / irmovq / rrmovq / push / pop's %rsp</td><td>1</td></tr>
+    <tr><td><code>M_valE</code></td><td>valE sitting in the Memory pipeline register (upper-case = the register at the start of the stage)</td><td>ALU result, one stage further on</td><td>2</td></tr>
+    <tr><td><code>W_valE</code></td><td>valE in the Write-back register</td><td>ALU result, about to be written</td><td>3</td></tr>
+    <tr><td><code>m_valM</code></td><td>valM coming out of data memory this cycle</td><td>mrmovq / popq's rA</td><td>2 (or 1 + a stall: load/use)</td></tr>
+    <tr><td><code>W_valM</code></td><td>valM in the Write-back register</td><td>a load, about to be written</td><td>3</td></tr>
+    <tr><td>register file</td><td>no forwarding needed</td><td>already written</td><td>4+</td></tr>
+  </tbody>
+</table>
+<p>If the quiz spells these out in words (something like "valE from Memory"), it's the same table: <em>which value</em> (valE = ALU, valM = memory) and <em>from which stage</em>.</p>
+
+<div class="quiz" data-answer="0">
+  <p class="q">F1. Where does <code>addq</code> get <code>%rax</code>?</p>
+  <pre><code>irmovq $3, %rax
+addq   %rax, %rbx</code></pre>
+  <ol class="opts"><li><code>e_valE</code></li><li><code>M_valE</code></li><li><code>m_valM</code></li><li>register file</li></ol>
+  <div class="why"><p>Distance 1, ALU-type producer (irmovq's value comes out of the ALU as valE). In the cycle <code>addq</code> is in Decode, <code>irmovq</code> is in Execute, so the value comes from <code>e_valE</code>.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">F2. Where does <code>addq</code> get <code>%rax</code>?</p>
+  <pre><code>mrmovq 0(%rdi), %rax
+irmovq $1, %rcx
+addq   %rax, %rbx</code></pre>
+  <ol class="opts"><li><code>e_valE</code></li><li><code>M_valE</code></li><li><code>m_valM</code></li><li><code>W_valM</code></li></ol>
+  <div class="why"><p>Distance 2, and the producer is a load, so the value is valM. When <code>addq</code> is in Decode the load is in Memory, reading it right now: <code>m_valM</code>. No stall.</p></div>
+</div>
+
+<div class="quiz" data-answer="1">
+  <p class="q">F3. What happens to <code>addq</code>?</p>
+  <pre><code>mrmovq 0(%rdi), %rax
+addq   %rax, %rbx</code></pre>
+  <ol class="opts"><li>No stall, forwarded from <code>e_valE</code></li><li>1 stall (load/use), then forwarded from <code>m_valM</code></li><li>1 stall, then forwarded from <code>W_valM</code></li><li>3 stalls, then the register file</li></ol>
+  <div class="why"><p>The loaded value doesn't exist until the end of Memory, but <code>addq</code> needs it at the end of Decode, which is too early when they're adjacent. Wait one cycle: the load is now in Memory while <code>addq</code> is still in Decode, so it's <code>m_valM</code>.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">F4. Where does <code>addq</code> get <code>%rax</code>?</p>
+  <pre><code>irmovq $3, %rax
+irmovq $1, %rcx
+irmovq $2, %rdx
+addq   %rax, %rbx</code></pre>
+  <ol class="opts"><li><code>e_valE</code></li><li><code>M_valE</code></li><li><code>W_valE</code></li><li>register file</li></ol>
+  <div class="why"><p>Distance 3, ALU value: the producer is in Write-back when <code>addq</code> decodes, so <code>W_valE</code>. (It's written to the register file at the end of that cycle, which is too late for the read.)</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q">F5. Two writers of <code>%rax</code>. Where does <code>addq</code> get it?</p>
+  <pre><code>irmovq $1, %rax
+irmovq $2, %rax
+addq   %rax, %rbx</code></pre>
+  <ol class="opts"><li><code>e_valE</code> from the second <code>irmovq</code></li><li><code>M_valE</code> from the first <code>irmovq</code></li><li>Both, so it's a conflict and the pipeline stalls</li><li>register file</li></ol>
+  <div class="why"><p>Priority goes to the <em>nearest</em> producer, because it holds the newest value. The forwarding logic checks <code>e_</code> before <code>M_</code> before <code>W_</code>. The answer is <code>e_valE</code>, giving <code>%rax = 2</code>.</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q">F6. Where does <code>mrmovq</code> get <code>%rsp</code>?</p>
+  <pre><code>pushq  %rax
+mrmovq 0(%rsp), %rbx</code></pre>
+  <ol class="opts"><li><code>e_valE</code>: push's new %rsp is computed by the ALU</li><li><code>m_valM</code>: push touches memory</li><li>No hazard, because <code>pushq</code> doesn't write a register</li><li>1 stall (load/use)</li></ol>
+  <div class="why"><p><code>pushq</code> writes <code>%rsp</code> with valE = %rsp − 8. That's an ALU value, so it can be forwarded straight out of Execute. There's no load/use stall: push <em>stores</em> to memory, it doesn't load.</p></div>
+</div>
+
+<div class="quiz" data-answer="3">
+  <p class="q">F7. Where does <code>rmmovq</code> get <code>%rax</code>?</p>
+  <pre><code>mrmovq 0(%rdi), %rax
+irmovq $1, %rcx
+irmovq $2, %rdx
+rmmovq %rax, 8(%rdi)</code></pre>
+  <ol class="opts"><li><code>m_valM</code></li><li><code>M_valE</code></li><li><code>W_valE</code></li><li><code>W_valM</code></li></ol>
+  <div class="why"><p>Distance 3 and a load, so it's valM, in the Write-back register: <code>W_valM</code>. (It isn't <code>W_valE</code>: for <code>mrmovq</code> valE is the <em>address</em>, not the data.)</p></div>
+</div>
+
+<p class="muted">For unlimited practice, use the random forwarding drill in <a href="0001-value-forwarding.html">Lesson 1</a>.</p>
+
+<!-- ============================================================ 3 -->
+<h2 id="s3">3 · Throughput: SEQ vs. PIPE</h2>
+
+<p>From slides 2.1: each stage's logic has a delay, and every pipeline register adds a fixed overhead (20 ps on the slides).</p>
+<pre><code>SEQ   clock period = (sum of all stage delays) + 1 register
+PIPE  clock period = (slowest stage)            + 1 register
+throughput (GIPS)  = 1000 / period in ps          (one instruction finishes every period)
+PIPE latency of 1 instruction = (number of stages) × PIPE period</code></pre>
+<p>Slide example (F 200, D 50, E 50, M 200, W 50, register 20): SEQ = 570 ps → 1.75 GIPS; PIPE = 220 ps → 4.55 GIPS. Latency goes up (570 → 1100 ps), but throughput is 2.6× higher.</p>
+
+<p><strong>Your turn.</strong> Stage delays: Fetch 150 ps, Decode 100 ps, Execute 120 ps, Memory 200 ps, Write-back 80 ps. Pipeline register: 20 ps.</p>
+
+<div class="quiz numeric" data-answer="1.49" data-tol="0.01">
+  <p class="q">T1. SEQ throughput, in GIPS (2 decimals)?</p>
+  <div class="why"><p>150 + 100 + 120 + 200 + 80 = 650, plus 20 = 670 ps. 1000 / 670 ≈ <strong>1.49 GIPS</strong>.</p></div>
+</div>
+<div class="quiz numeric" data-answer="4.55" data-tol="0.01">
+  <p class="q">T2. 5-stage PIPE throughput, in GIPS (2 decimals)?</p>
+  <div class="why"><p>Slowest stage is Memory at 200, plus 20 = 220 ps. 1000 / 220 ≈ <strong>4.55 GIPS</strong>. Only the slowest stage matters, which is why balanced stages are the goal.</p></div>
+</div>
+<div class="quiz numeric" data-answer="1100">
+  <p class="q">T3. Latency of a single instruction in the 5-stage PIPE, in ps?</p>
+  <div class="why"><p>5 stages × 220 ps = <strong>1100 ps</strong>, more than SEQ's 670. Every instruction pays for the slowest stage five times, plus five register overheads.</p></div>
+</div>
+<div class="quiz numeric" data-answer="3.05" data-tol="0.01">
+  <p class="q">T4. Throughput speedup of PIPE over SEQ (2 decimals)?</p>
+  <div class="why"><p>670 / 220 ≈ <strong>3.05×</strong>. This ignores hazards. With stalls, divide by CPI, which is the real speedup.</p></div>
+</div>
+
+<div class="callout">
+  <span class="label">Wording the course uses</span>
+  From the Lab 4 answer key: "SEQ takes one cycle per instruction" is a <em>will always</em> fact. "A deeper pipeline has a shorter clock period" is only <em>is likely to</em>, because it depends on how evenly the logic splits up.
+</div>
+
+<!-- ============================================================ 4 -->
+<h2 id="s4">4 · Five stages squeezed into three: <code>|FD|EM|W|</code></h2>
+
+<p>The question merges Fetch+Decode into one stage and Execute+Memory into another, leaving Write-back alone. You're asked to compare it with the 5-stage pipeline and count stalls for a short program.</p>
+
+<div class="callout">
+  <span class="label">Rules I'm assuming (as I understood your description)</span>
+  <ul>
+    <li>Registers are read at the <strong>end of FD</strong> and written at the <strong>end of W</strong>. Without forwarding, a consumer can't be in FD until the cycle <em>after</em> its producer's W (the same "wait for write-back" rule as the 5-stage pipe).</li>
+    <li>Forwarding: a value can go from the start of one stage to the start of another, or from <em>anywhere</em> in one stage to the <em>end</em> of another in the same cycle. That second rule is the one that matters: it's how <code>e_valE</code> → Decode works in the 5-stage pipe.</li>
+    <li>The next PC is needed at the <strong>start</strong> of FD.</li>
+  </ul>
+</div>
+
+<h3>Deriving the costs</h3>
+<p><strong>No forwarding.</strong> The producer is in FD in cycle t, EM in t+1 and W in t+2, so the consumer's FD must be at t+3 or later. An adjacent consumer would naturally be in FD at t+1, so it stalls <strong>2</strong>. At distance 2 it stalls <strong>1</strong>, and at distance 3 or more it stalls <strong>0</strong>. (5-stage: 3 / 2 / 1 / 0.)</p>
+<p><strong>With forwarding.</strong> An adjacent consumer is in FD while the producer is in EM. Both valE (ALU) <em>and</em> valM (memory) are produced inside EM, and the consumer only needs them by the <em>end</em> of FD, so "anywhere → end" covers both. That gives <strong>0 stalls, even for load/use</strong>. In the 5-stage pipe the load/use stall exists because memory is two stages behind Decode. Here it's only one.</p>
+<p><strong>Control.</strong> <code>jXX</code>'s outcome is known in EM, so only one wrong instruction (the one in FD) has been fetched: a misprediction costs <strong>1</strong> squash (5-stage: 2). <code>ret</code>'s return address is read in EM, so the next fetch can happen the cycle after: <strong>1</strong> bubble (5-stage: 3).</p>
+<p><strong>Clock.</strong> The period is the slowest merged stage plus one register. With the slide numbers: FD = 200 + 50 = 250, EM = 50 + 200 = 250, W = 50, so the period is 270 ps vs. 220 ps.</p>
+
+<table class="data">
+  <thead><tr><th></th><th>5-stage</th><th>3-stage |FD|EM|W|</th></tr></thead>
+  <tbody>
+    <tr><td>Data stalls, adjacent, no forwarding</td><td>3</td><td>2</td></tr>
+    <tr><td>Load/use with forwarding</td><td>1</td><td>0</td></tr>
+    <tr><td>Mispredicted jXX</td><td>2 squashed</td><td>1 squashed</td></tr>
+    <tr><td><code>ret</code></td><td>3 bubbles</td><td>1 bubble</td></tr>
+    <tr><td>Pipeline fill</td><td>+4 cycles</td><td>+2 cycles</td></tr>
+    <tr><td>Clock period (slide numbers)</td><td>220 ps</td><td>270 ps</td></tr>
+  </tbody>
+</table>
+<p>So: fewer stages means fewer and cheaper hazards, but a longer clock period. Which pipeline is faster overall depends on the program. Short, hazard-heavy code favours 3 stages; long, smooth code favours 5.</p>
+
+<div class="quiz" data-answer="1">
+  <p class="q">G1. Compared with the 5-stage pipeline, the 3-stage <code>|FD|EM|W|</code> pipeline…</p>
+  <ol class="opts">
+    <li>has a shorter clock period and fewer stalls</li>
+    <li>is likely to have a longer clock period, but each hazard costs fewer (or equal) stall cycles</li>
+    <li>has more stalls, because there are fewer stages to forward from</li>
+    <li>will always run every program faster, because it has fewer stalls</li>
+  </ol>
+  <div class="why"><p>Merging stages adds their delays together, so the slowest stage gets slower or stays the same, and so does the period. But producers and consumers are fewer stages apart, so every hazard shrinks. "Will always run faster" is wrong because the longer period can cancel out the saved stalls.</p></div>
+</div>
+
+<div class="quiz" data-answer="2">
+  <p class="q">G2. 3-stage, <strong>no forwarding</strong>: how many stalls for an instruction that uses the result of the instruction right before it?</p>
+  <ol class="opts"><li>0</li><li>1</li><li>2</li><li>3</li></ol>
+  <div class="why"><p>Producer: FD t, EM t+1, W t+2. Consumer needs FD ≥ t+3, but would naturally be at t+1, so it stalls 2.</p></div>
+</div>
+
+<div class="quiz" data-answer="0">
+  <p class="q">G3. 3-stage, <strong>with forwarding</strong> (anywhere → end of stage): <code>mrmovq 0(%rdi), %rax</code> immediately followed by <code>addq %rax, %rbx</code>. Stalls?</p>
+  <ol class="opts"><li>0</li><li>1</li><li>2</li></ol>
+  <div class="why"><p>The load reads memory during EM, in the same cycle the <code>addq</code> is in FD, and <code>addq</code> only needs the value by the end of FD. Under the "anywhere → end" rule it gets there in time. If the rule were only "start → start", it would have to wait for the value to reach the W register, which costs a stall.</p></div>
+</div>
+
+<p><strong>Count it.</strong> Use this program for G4–G8:</p>
+<pre><code>irmovq $5, %rax
+irmovq $2, %rbx
+addq   %rax, %rbx         # needs %rbx (distance 1), %rax (distance 2)
+rmmovq %rbx, 0(%rcx)      # needs %rbx (distance 1)
+mrmovq 8(%rcx), %rdx
+addq   %rdx, %rax         # needs %rdx (distance 1)
+halt</code></pre>
+
+<div class="quiz numeric" data-answer="9">
+  <p class="q">G4. 5-stage, no forwarding (stalling): total data stalls?</p>
+  <div class="why"><p>Three distance-1 hazards (addq ← irmovq %rbx, rmmovq ← addq, addq ← mrmovq) at 3 stalls each = <strong>9</strong>. On the first addq, %rax is at distance 2, which only needs 2 stalls, and the 3 for %rbx already cover it. Take the maximum, don't add.</p></div>
+</div>
+<div class="quiz numeric" data-answer="6">
+  <p class="q">G5. 3-stage, no forwarding: total data stalls?</p>
+  <div class="why"><p>The same three distance-1 hazards at 2 stalls each = <strong>6</strong>.</p></div>
+</div>
+<div class="quiz numeric" data-answer="15">
+  <p class="q">G6. 3-stage, no forwarding: total cycles (7 instructions including halt; fill = 2)?</p>
+  <div class="why"><p>7 + 2 + 6 = <strong>15</strong>. (5-stage: 7 + 4 + 9 = 20.)</p></div>
+</div>
+<div class="quiz" data-answer="0">
+  <p class="q">G7. With the slide clock periods (5-stage 220 ps, 3-stage 270 ps) and no forwarding, which finishes this program first?</p>
+  <ol class="opts"><li>3-stage: 15 × 270 = 4050 ps vs. 20 × 220 = 4400 ps</li><li>5-stage: shorter clock period always wins</li><li>They tie</li></ol>
+  <div class="why"><p>This program is short and full of hazards, so the cheaper stalls and the shorter fill outweigh the slower clock.</p></div>
+</div>
+<div class="quiz numeric" data-answer="1">
+  <p class="q">G8. Now <strong>with forwarding</strong>: how many data stalls in the 5-stage pipeline? (The 3-stage has 0.)</p>
+  <div class="why"><p>Just the load/use at <code>addq %rdx, %rax</code>: <strong>1</strong>. 5-stage: 7 + 4 + 1 = 12 cycles × 220 = 2640 ps. 3-stage: 7 + 2 + 0 = 9 × 270 = 2430 ps.</p></div>
+</div>
+
+<!-- ============================================================ 5 -->
+<h2 id="s5">5 · Stalls and squashes in a loop</h2>
+
+<p>The procedure from <a href="0008-pipeline-problem-workout.html">Lesson 8</a>, in short:</p>
+<ol>
+  <li><strong>Trace the loop by hand</strong>: how many times does it run, and which way does each jump go each time? Write that list down first.</li>
+  <li><strong>Data hazards inside the body</strong>, and across the jump back to the top: instructions squashed in between don't count toward distance.</li>
+  <li><strong>The first iteration is special.</strong> Its producers come from the setup code, not from the end of the previous iteration.</li>
+  <li><strong>Each jump:</strong> was the prediction right? Each wrong one costs 2 squashed instructions (5-stage). Every <code>ret</code> costs 3 bubbles.</li>
+  <li><strong>CPI</strong> = (I + 4 fill + all bubbles) / I, where I counts every executed instruction including <code>halt</code> (slides 2.5).</li>
+</ol>
+
+<h3>Loop A</h3>
+<pre><code>    irmovq $3, %rcx
+    irmovq $1, %r8
+    irmovq $0, %rax
+loop:
+    addq   %rcx, %rax
+    subq   %r8, %rcx
+    jne    loop
+    halt</code></pre>
+<p>The loop runs 3 times: <code>jne</code> is taken, taken, then not taken.</p>
+
+<div class="quiz numeric" data-answer="13">
+  <p class="q">A1. How many instructions execute (including halt)?</p>
+  <div class="why"><p>3 setup + 3 × 3 body + halt = <strong>13</strong>.</p></div>
+</div>
+<div class="quiz numeric" data-answer="2">
+  <p class="q">A2. Forwarding, <strong>predict always taken</strong>: instructions squashed?</p>
+  <div class="why"><p>Only the final, not-taken <code>jne</code> is mispredicted: 1 × 2 = <strong>2</strong>. With forwarding there are 0 data stalls (all producers are ALU ops). CPI = (13 + 4 + 2) / 13 = 19/13 ≈ 1.46.</p></div>
+</div>
+<div class="quiz numeric" data-answer="4">
+  <p class="q">A3. Forwarding, <strong>predict never taken</strong>: instructions squashed?</p>
+  <div class="why"><p>The two taken jumps are mispredicted: 2 × 2 = <strong>4</strong>.</p></div>
+</div>
+<div class="quiz numeric" data-answer="7">
+  <p class="q">A4. <strong>No forwarding</strong> (stalling), predict always taken: total data stalls?</p>
+  <div class="why"><p>Iteration 1: <code>addq</code> needs %rax from <code>irmovq $0</code> at distance 1, so <strong>3</strong>. Iterations 2 and 3: <code>addq</code> needs %rcx from the previous <code>subq</code>, with only <code>jne</code> in between (distance 2), so <strong>2</strong> each. Total 3 + 2 + 2 = <strong>7</strong>. Plus the 2 squashed from A2.</p></div>
+</div>
+
+<h3>Loop B: a load inside the body</h3>
+<pre><code>    irmovq array, %rdi
+    irmovq $4, %rcx
+    irmovq $8, %r9
+    irmovq $1, %r8
+    xorq   %rax, %rax
+loop:
+    mrmovq 0(%rdi), %rdx
+    addq   %rdx, %rax       # sum += *p
+    addq   %r9, %rdi        # p++
+    subq   %r8, %rcx
+    jne    loop
+    halt
+array: .quad 1, 2, 3, 4     # (one .quad per line in real y86)</code></pre>
+
+<div class="quiz numeric" data-answer="4">
+  <p class="q">B1. Forwarding, predict always taken: total data stalls?</p>
+  <div class="why"><p>A load/use stall on <code>addq %rdx, %rax</code> every iteration: 4 × 1 = <strong>4</strong>. Everything else forwards. (The fix: move <code>addq %r9, %rdi</code> between the load and its use, which gets you 0. That's Lesson 3's scheduling trick.)</p></div>
+</div>
+<div class="quiz numeric" data-answer="2">
+  <p class="q">B2. Same setup: instructions squashed?</p>
+  <div class="why"><p>Four iterations, so <code>jne</code> is taken 3 times and not taken once. Always-taken misses once: <strong>2</strong>. (Never-taken would miss 3 times: 6.)</p></div>
+</div>
+<div class="quiz numeric" data-answer="1.38" data-tol="0.006">
+  <p class="q">B3. CPI (2 decimals)?</p>
+  <div class="why"><p>I = 5 + 4 × 5 + 1 = 26. CPI = (26 + 4 + 4 + 2) / 26 = 36/26 ≈ <strong>1.38</strong>.</p></div>
+</div>
+
+<p class="muted">More loop problems, randomly generated and with full breakdowns: <a href="0008-pipeline-problem-workout.html">Lesson 8 workout</a>.</p>
+
+<p class="ask">Remember the exact wording of the 3-stage question, or any of the programs? Paste them in the terminal and I'll work them through and adjust §4 to match.</p>
+
+<nav class="lesson-nav">
+  <a href="0009-write-your-own-y86.html">← Lesson 9: Write your own y86</a>
+  <a href="../reference/0001-pipeline-hazards-cheatsheet.html">Cheat sheet</a>
+</nav>
+
+</main>
+<script src="../assets/y86pipe.js"></script>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/replay.js"></script>
+<script>
+  Replay.freeze(document.getElementById('fz1'), { src: 'irmovq $10, %rax\nirmovq $3, %rbx\naddq %rax, %rbx\nrrmovq %rbx, %rcx\nxorq %rdx, %rdx', cycle: 6 });
+  Replay.freeze(document.getElementById('fz2'), { src: 'irmovq $1, %r8\naddq %r8, %r9\naddq %r8, %r10\naddq %r9, %r10\nrrmovq %r10, %rax', cycle: 6 });
+</script>
+</body>
+</html>

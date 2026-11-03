@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 3 Cheat Sheet</title>
+<link rel="stylesheet" href="../assets/course.css">
+<style>main{max-width:52rem}h2{margin-top:1.6rem}</style>
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Reference</div>
+  <h1>Quiz 3 Cheat Sheet</h1>
+  <p class="subtitle">For studying. It won't be available in the quiz, so learn the parts that aren't on the course reference sheets.</p>
+</header>
+
+<h2>Glossary</h2>
+<div class="table-scroll"><table class="data">
+<tr><td><strong>Line / block</strong></td><td>The unit moved into a cache</td></tr>
+<tr><td><strong>Slot</strong></td><td>A place that holds a line and its metadata</td></tr>
+<tr><td><strong>Set</strong></td><td>The group of slots a line may occupy; chosen by the index</td></tr>
+<tr><td><strong>Way</strong></td><td>Slots per set, or associativity</td></tr>
+<tr><td><strong>Data source</strong></td><td>The next level down, such as memory</td></tr>
+<tr><td><strong>Dirty</strong></td><td>Updated in the cache but not yet in the source</td></tr>
+<tr><td><strong>Stride</strong></td><td>Distance between consecutive accesses</td></tr>
+<tr><td><strong>Local / remote</strong></td><td>This core's operation / another core's operation</td></tr>
+</table></div>
+
+<h2>Address bits</h2>
+<p><code>| tag | index | offset |</code>. b = log₂(line size). slots = size ÷ line size. sets = slots ÷ ways. s = log₂(sets). t = m − s − b. size = sets × ways × line size. 1 KB = 1024 bytes.</p>
+
+<h2>Times</h2>
+<p>Average = h × hit + (1 − h) × total miss. Memory speedup = old ÷ new average. Required hit rate: set the average to old ÷ speedup and solve for h.</p>
+<p>Amdahl: speedup = 1 / ((1 − a) + a/k). T<sub>new</sub> = T<sub>old</sub> × ((1 − a) + a/k). Limit: 1 / (1 − a).</p>
+<p>Multi-level miss: add every transfer that must happen, plus one for each dirty eviction on that link, then the final L1 access.</p>
+
+<h2>Replacement: evict the line…</h2>
+<p><strong>Belady:</strong> used farthest in the future. <strong>LRU:</strong> used farthest in the past. <strong>LFU:</strong> smallest count (the count restarts after eviction, per slides 3.3). <strong>MRU:</strong> used most recently. <strong>Hardware:</strong> often random.</p>
+
+<h2>Write latency (c = cache, d = source)</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Combination</th><th>Hit</th><th>Miss</th></tr>
+<tr><td>Write-through, no-allocate</td><td>d</td><td>d</td></tr>
+<tr><td>Write-through, allocate</td><td>d</td><td>2d</td></tr>
+<tr><td>Write-back, no-allocate</td><td>c</td><td>c + d</td></tr>
+<tr><td>Write-back, allocate</td><td>c</td><td>clean c + d; dirty c + 2d</td></tr>
+</table></div>
+<p>Write-back: faster, coalesces writes. Write-through: no window of vulnerability, simpler. Allocate: good for many writes per line. No-allocate: avoids cache clutter from write-only data.</p>
+
+<h2>Stride</h2>
+<p>s ≥ L: every access misses. s &lt; L: hit rate = 1 − s/L on a first aligned pass. C is row-major: column stride = element × columns.</p>
+<p>Trace: skips lines → more than a line. Each line once → exactly one. Mix of 1 and 2 → between half and one. Exactly 2 → half. Some 3+ → under half.</p>
+<p>Array too big: line number mod sets gives the set. In a set with more lines than ways under LRU, all of its lines miss on every pass. Others miss once. Direct-mapped can beat fully associative LRU on these cycles.</p>
+
+<h2>MESI, next state</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>From</th><th>Local read</th><th>Local write</th><th>Remote read</th><th>Remote write</th></tr>
+<tr><td>M</td><td>M</td><td>M</td><td>S, write back (course MSI: I)</td><td>I, write back</td></tr>
+<tr><td>E</td><td>E</td><td>M, silent</td><td>S</td><td>I</td></tr>
+<tr><td>S</td><td>S</td><td>M, invalidate</td><td>S</td><td>I</td></tr>
+<tr><td>I</td><td>E if alone, else S (MSI: S)</td><td>M, invalidate</td><td>I</td><td>I</td></tr>
+</table></div>
+<p>Same address: M or E can pair only with I; S pairs with S or I. Same slot: any pair is possible, because the tags can differ. Communication: read hit no; read miss yes; write hit maybe; write miss yes; clean eviction no; dirty eviction yes.</p>
+
+<h2>Parallelism</h2>
+<p>Pipeline, superscalar, out-of-order, hyperthreading (register copies, shared logic), multicore (MIMD), vector/GPU (SIMD), accelerators, distributed (no shared memory), multitasking (OS illusion).</p>
+
+<h2>Stalls</h2>
+<p>ALU then use: 3 / 0 / 0. Load then use: 3 / 1 / 1. <code>jXX</code>: 2 / 2 / 0. <code>ret</code>: 3 / 3 / 3. Columns: stalling only / + forwarding / + prediction in the best case.</p>
+
+<nav class="lesson-nav no-print"><a href="../lessons/quiz3/index.html">Quiz 3 plan</a></nav>
+</main>
+</body>
+</html>

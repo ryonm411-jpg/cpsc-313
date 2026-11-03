@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parallelism &amp; Hazard Review</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 8</div>
+  <h1>Parallelism &amp; Hazard Review</h1>
+  <p class="subtitle">Pipelining is one way to do many things at once. Here is where it sits among the others.</p>
+</header>
+
+<p><strong>Your win for today:</strong> place any form of parallelism on the map, and count stalls under each mitigation (R3.2). About 15 minutes.</p>
+<h2>1 · The map</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Form</th><th>What it does</th></tr>
+<tr><td><strong>Pipelining</strong></td><td>Overlaps the stages of different instructions in one core</td></tr>
+<tr><td><strong>Superscalar</strong></td><td>Issues more than one instruction per cycle, using multiple functional units</td></tr>
+<tr><td><strong>Out-of-order</strong></td><td>Reorders instructions and renames registers; a scheduler dispatches when operands are ready</td></tr>
+<tr><td><strong>Hyperthreading</strong></td><td>N copies of the registers share one core's logic; switches in hardware while waiting on memory</td></tr>
+<tr><td><strong>Multicore / multiprocessor</strong></td><td>Several full execution units, each with its own instruction stream (MIMD)</td></tr>
+<tr><td><strong>Vector / GPU</strong></td><td>One instruction applied to many values (SIMD), such as Intel AVX</td></tr>
+<tr><td><strong>Accelerators</strong></td><td>NPU, crypto and compression units, FPGA: specialised hardware</td></tr>
+<tr><td><strong>Distributed</strong></td><td>Many machines over a network; no shared memory; each has its own OS</td></tr>
+<tr><td><strong>Multitasking</strong></td><td>Mostly an illusion: the OS rapidly switches between jobs</td></tr>
+</table></div>
+<p>Flynn's taxonomy crosses single or multiple instruction streams with single or multiple data streams: SISD is a conventional uniprocessor, SIMD is vector, MISD is uncommon, MIMD is multicore. <span class="cite">Slides 2.6</span></p>
+<div class="quiz" data-answer="1"><p class="q">Which has multiple register sets sharing one core's execution logic?</p><ol class="opts"><li>Superscalar execution</li><li>Hyperthreading</li><li>Multicore</li><li>SIMD execution</li></ol><div class="why"><p>Each hyperthread has its own registers, and the core switches to another while one waits on memory.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Which is true of a distributed system but not of multicore?</p><ol class="opts"><li>Runs many threads at once</li><li>Uses multiple processors</li><li>Cores share no memory</li><li>Has a cache at each level</li></ol><div class="why"><p>Machines communicate over a network, each with its own OS.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Running 4 threads on 1 core with no hardware support is…</p><ol class="opts"><li>True MIMD parallel work</li><li>Multitasking by the OS</li><li>SIMD on four data items</li><li>Superscalar execution</li></ol><div class="why"><p>They take turns, so it only looks simultaneous.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">What limits how far pipelining and clock speed can go? (slides 2.6)</p><ol class="opts"><li>Heat, skew and depth</li><li>Hit rate and line size</li><li>Tag bits and index bits</li><li>Amdahl and Belady laws</li></ol><div class="why"><p>Clock frequency is limited by pipeline depth, heat and clock skew. CPI is limited by the amount of instruction-level parallelism.</p></div></div>
+
+<h2>2 · Hazards are still on the quiz</h2>
+<p>R3.2 asks for best-case stalls. The “best case” assumes correct prediction. This applies to the standard 5-stage pipeline:</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Situation</th><th>Stalling only</th><th>+ forwarding</th><th>+ prediction (best case)</th></tr>
+<tr><td>ALU result used by the next instruction</td><td>3</td><td>0</td><td>0</td></tr>
+<tr><td>Load used by the next instruction</td><td>3</td><td>1</td><td>1</td></tr>
+<tr><td>Conditional jump</td><td>2</td><td>2</td><td>0</td></tr>
+<tr><td><code>ret</code></td><td>3</td><td>3</td><td>3</td></tr>
+</table></div>
+<div class="quiz numeric" data-answer="3"><p class="q"><code>irmovq $1, %rax</code> then <code>addq %rax, %rbx</code>, stalling only. Stalls?</p><div class="why"><p>The result is not yet readable from the register file: 3 stalls with distance 1.</p></div></div>
+<div class="quiz numeric" data-answer="0"><p class="q"><code>mrmovq 0(%rax), %rbx</code>, then <code>addq %rcx, %rdx</code>, then <code>addq %rbx, %rsi</code>, with forwarding. Stalls?</p><div class="why"><p>The instruction in between means the loaded value is available from <code>m_valM</code> by the time the consumer is in Decode. Only a <em>directly</em> following consumer costs a stall.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Which instruction is never helped by forwarding or by prediction?</p><ol class="opts"><li><code>mrmovq</code></li><li><code>jXX</code></li><li><code>ret</code></li><li><code>addq</code></li></ol><div class="why"><p>The return address is read from memory, so it is known too late to predict with what we have. It always costs 3.</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 2.6, plus your <a href="../../reference/0001-pipeline-hazards-cheatsheet.html">pipeline hazards cheat sheet</a>.
+</div>
+<div class="callout key">
+  <span class="label">Now test it</span>
+  Try R3.2 on PrairieLearn from memory.
+</div>
+<p class="ask">If anything is unclear or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0007-msi-and-mesi.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0009-mock-quiz.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+
+</body>
+</html>

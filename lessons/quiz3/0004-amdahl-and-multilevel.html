@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amdahl's Law &amp; Multi-level Caches</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 4</div>
+  <h1>Amdahl's Law &amp; Multi-level Caches</h1>
+  <p class="subtitle">A speedup is limited by the part you did not improve.</p>
+</header>
+
+<p><strong>Your win for today:</strong> apply Amdahl's Law forwards and backwards, and add up multi-level miss times (R3.9). About 20 minutes.</p>
+<h2>Warm-up: recall</h2>
+<div class="quiz numeric" data-answer="8"><p class="q">Hit 3 ns, total miss 53 ns, 90% hit rate. Average access time in ns?</p><div class="why"><p>0.9 × 3 + 0.1 × 53 = 2.7 + 5.3 = 8. <a href="0001-address-bits-and-access-time.html">Lesson 1</a>.</p></div></div>
+
+<h2>1 · The law</h2>
+<div class="callout key"><span class="label">On your reference sheet</span>
+T<sub>new</sub> = T<sub>old</sub> × ((1 − a) + a/k)<br>
+speedup = 1 / ((1 − a) + a/k)<br>
+<small>a = fraction of the <em>old</em> time in the improved part; k = how many times faster that part gets.</small></div>
+<p>Slide example: 100 s, 25% in memory instructions, memory twice as fast. Speedup = 1/(0.75 + 0.125) = 1.14, and T<sub>new</sub> = 87.5 s. <span class="cite">Slides 3.4</span></p>
+<p>Make k infinite and a/k vanishes, so the <strong>limit is 1/(1 − a)</strong>. That is why 256 threads barely beat 4 when most of the work is sequential.</p>
+<div class="quiz numeric" data-answer="1.67" data-tol="0.005"><p class="q">60% of runtime gets 3× faster. Speedup? (2 decimals)</p><div class="why"><p>1 / (0.4 + 0.6/3) = 1 / 0.6 = 1.67.</p></div></div>
+<div class="quiz numeric" data-answer="2.5" data-tol="0.005"><p class="q">Same program, but the 60% part gets infinitely fast. Speedup limit? (2 decimals)</p><div class="why"><p>1 / 0.4 = 2.5.</p></div></div>
+<div class="quiz numeric" data-answer="2"><p class="q">40% of runtime can be improved. What k gives an overall speedup of 1.25?</p><div class="why"><p>1/1.25 = 0.8 = 0.6 + 0.4/k, so 0.4/k = 0.2 and k = 2.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">20% of runtime can be improved. Can you get an overall speedup of 1.5?</p><ol class="opts"><li>Yes, with a large enough k</li><li>Yes, if k is exactly 5.00</li><li>No, the limit is 1.25 here</li><li>No, the limit is 1.20 here</li></ol><div class="why"><p>The limit is 1/0.8 = 1.25. A question like this may ask you to enter -1 when no answer exists, as R3.8 does.</p></div></div>
+
+<h2>2 · Multi-level caches: follow the line</h2>
+<p>Write-back L1 and L2, with data flowing memory ↔ L2 ↔ L1. Use L1 hit <strong>3</strong>, L1↔L2 transfer <strong>20</strong>, L2↔memory transfer <strong>50</strong>. Ask: which transfers must happen? Add them, then add the final L1 access.</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Read case</th><th>Steps</th><th>Total</th></tr>
+<tr><td>L1 hit</td><td>3</td><td>3</td></tr>
+<tr><td>L1 miss (clean), L2 hit</td><td>20 + 3</td><td>23</td></tr>
+<tr><td>L1 miss (<strong>dirty</strong>), L2 hit</td><td><strong>20</strong> + 20 + 3</td><td>43</td></tr>
+<tr><td>L1 miss (clean), L2 miss (clean)</td><td>50 + 20 + 3</td><td>73</td></tr>
+<tr><td>L1 miss (clean), L2 miss (<strong>dirty</strong>)</td><td><strong>50</strong> + 50 + 20 + 3</td><td>123</td></tr>
+</table></div>
+<p>A dirty eviction adds one extra transfer on that link, to write the old line down. These costs follow the rule in slides 3.5.</p>
+<div class="quiz numeric" data-answer="10.5" data-tol="0.01"><p class="q">70% of accesses hit L1. Of those that miss, 90% hit L2. All evictions are clean. Average access time in ns? (2 decimals)</p><div class="why"><p>0.7×3 + 0.3×(0.9×23 + 0.1×73) = 2.1 + 0.3×28 = 10.5. “Of those that miss” is a nested percentage: the 90% applies only inside the 0.3.</p></div></div>
+
+<p><strong>Drill.</strong> Mixed: Amdahl, limits, averages, required hit rate, two-level times.</p>
+<div id="d1"></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Amdahl's Law reference sheet (available in the quiz) and slides 3.4, then CS:APP 3e §1.9.1.
+</div>
+<div class="callout key">
+  <span class="label">Now test it</span>
+  Try R3.8 and R3.9 on PrairieLearn from memory.
+</div>
+<p class="ask">If anything is unclear or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0003-replacement-policies.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0005-write-policies.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script>
+  Cache.amdahl(document.getElementById('d1'));
+</script>
+</body>
+</html>

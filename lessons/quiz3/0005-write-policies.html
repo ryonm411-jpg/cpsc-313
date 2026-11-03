@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Write Policies</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 5</div>
+  <h1>Write Policies</h1>
+  <p class="subtitle">Two independent decisions: when does the data reach the source, and does a write miss load the line?</p>
+</header>
+
+<p><strong>Your win for today:</strong> give the write latency for all four combinations, and find a break-even hit rate (R3.10). About 15 minutes.</p>
+<h2>Warm-up: recall</h2>
+<div class="quiz numeric" data-answer="22"><p class="q">L1 hit 2, L1↔L2 transfer 10, L2 hit. A read misses L1 and evicts a dirty line. Time?</p><div class="why"><p>10 (write back) + 10 (fetch) + 2 = 22. <a href="0004-amdahl-and-multilevel.html">Lesson 4</a>.</p></div></div>
+
+<h2>1 · The decisions</h2>
+<div class="table-scroll"><table class="data">
+<tr><th></th><th>What it does</th><th>Advantages</th></tr>
+<tr><td><strong>Write-through</strong></td><td>writes cache and source</td><td>No window where only the cache has the new data; simpler</td></tr>
+<tr><td><strong>Write-back</strong></td><td>writes cache, sets dirty bit, writes source on eviction</td><td>Faster; repeated writes coalesce into one</td></tr>
+<tr><td><strong>Write-allocate</strong></td><td>a write miss loads the line first</td><td>Faster for many writes in one line; matches read behaviour</td></tr>
+<tr><td><strong>No-write-allocate</strong></td><td>a write miss goes straight to the source</td><td>Avoids filling the cache with write-only or random data</td></tr>
+</table></div>
+<p>The usual pairs are write-back with write-allocate, and write-through with no-write-allocate. <span class="cite">Slides 3.4</span></p>
+<h2>2 · Latencies</h2>
+<p>With cache time <strong>c</strong> and source time <strong>d</strong>. Parallel writes don't add, so write-through's cache write is hidden by the slower source write. <span class="cite">Slides 3.5, where c = 2, d = 20</span></p>
+<div class="table-scroll"><table class="data">
+<tr><th>Combination</th><th>Write hit</th><th>Write miss</th><th>c=2, d=20</th></tr>
+<tr><td>Write-through, no-allocate</td><td>d</td><td>d</td><td>20 / 20</td></tr>
+<tr><td>Write-through, allocate</td><td>d</td><td>2d</td><td>20 / 40</td></tr>
+<tr><td>Write-back, no-allocate</td><td>c</td><td>c + d</td><td>2 / 22</td></tr>
+<tr><td>Write-back, allocate, clean eviction</td><td>c</td><td>c + d</td><td>2 / 22</td></tr>
+<tr><td>Write-back, allocate, <strong>dirty</strong> eviction</td><td>c</td><td>c + 2d</td><td>2 / 42</td></tr>
+</table></div>
+<div class="quiz" data-answer="2"><p class="q">Why does a write-through, write-allocate miss take 2d?</p><ol class="opts"><li>It writes the source twice</li><li>It reads the line twice over</li><li>It writes then reads the source</li><li>It evicts a dirty cache line</li></ol><div class="why"><p>One source write for the new data, plus one source read to fetch the rest of the line. A write-through cache has no dirty lines.</p></div></div>
+<div class="quiz numeric" data-answer="8"><p class="q">Write-back, write-allocate, c = 2, d = 20. 80% write hits. Half of the misses evict a dirty line. Average write time in ns?</p><div class="why"><p>Average miss = 0.5×22 + 0.5×42 = 32. Average = 0.8×2 + 0.2×32 = 1.6 + 6.4 = 8.</p></div></div>
+<div class="quiz numeric" data-answer="0.75" data-tol="0.005"><p class="q">Write-back, write-allocate: hit 4, clean miss 20. Write-through, no-allocate: every write 8. Assume all evictions are clean. At what hit rate are the averages equal? (2 decimals)</p><div class="why"><p>4h + 20(1 − h) = 8, so 16h = 12 and h = 0.75. Write-through takes 8 on hits and misses alike, which is what makes this quick.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">A program writes the same word 1000 times, then its line is evicted. How many source writes for write-back and for write-through?</p><ol class="opts"><li>1 and 1 source write</li><li>1000 and 1 source writes</li><li>1 and 1000 source writes</li><li>1000 and 1000 source writes</li></ol><div class="why"><p>This is write coalescing, and it counts in write-back's favour.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">What must a write-back cache store that a write-through cache doesn't need?</p><ol class="opts"><li>A valid bit for each line</li><li>A tag for each cache line</li><li>A dirty bit for each line</li><li>An offset for each line</li></ol><div class="why"><p>The dirty bit says the line must be written out on eviction. See the metadata list in slides 3.5.</p></div></div>
+
+<p><strong>Drill.</strong> All combinations, plus break-even problems.</p>
+<div id="d1"></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.4 (part 2) and 3.5, then CS:APP 3e §6.4.5. Slides 3.5 warn that you are also responsible for the uncommon combinations.
+</div>
+<div class="callout key">
+  <span class="label">Now test it</span>
+  Try R3.10 on PrairieLearn, then redo the §2 table from memory, using c and d.
+</div>
+<p class="ask">If anything is unclear or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0004-amdahl-and-multilevel.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0006-strided-access.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script>
+  Cache.write(document.getElementById('d1'));
+</script>
+</body>
+</html>
