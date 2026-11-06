@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 3 Round Two: Writes, Conflicts, Coherence, Concepts</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 12</div>
+  <h1>Round Two: A, E, F, G</h1>
+  <p class="subtitle">One method per group, then new numbers. Learn the method instead of memorising the answers.</p>
+</header>
+
+<div class="callout">
+  <span class="label">What went wrong in Lesson 10</span>
+  <strong>A2</strong>: you answered 30, but the answer is 60. You left out the <em>fetch</em> that write-allocate does.<br>
+  <strong>A3</strong>: you answered 62, but the answer is 32. You wrote back a victim that was <em>clean</em>, and a clean line has nothing to write back.<br>
+  Both mistakes come from guessing the formula. The fix is to list the trips the write makes, as below.
+</div>
+
+<!-- ===================================================== A -->
+<h2>A · Writes: count the trips</h2>
+<p>Don't memorise a formula. List what physically happens, then add up the times. There are only four possible steps:</p>
+<div class="table-scroll"><table class="data">
+<tr><th>#</th><th>Step</th><th>When it happens</th><th>Cost</th></tr>
+<tr><td>1</td><td>Write the dirty victim back to the source</td><td>Write-back <strong>and</strong> a miss <strong>and</strong> the victim is dirty</td><td>d</td></tr>
+<tr><td>2</td><td>Fetch the line from the source</td><td>A miss <strong>and</strong> write-allocate</td><td>d</td></tr>
+<tr><td>3</td><td>Write the data to the source</td><td>Write-through (every write, hit or miss); also a no-allocate miss</td><td>d</td></tr>
+<tr><td>4</td><td>Write the data into the cache</td><td>Whenever the line is in the cache at the end</td><td>c, <strong>hidden</strong> if step 3 also happens (they run in parallel)</td></tr>
+</table></div>
+<div class="callout key">
+  <span class="label">Three facts that kill the mistakes</span>
+  1. <strong>Allocate = fetch.</strong> A write-allocate miss <em>always</em> pays one d to bring the line in. (Your A2 mistake.)<br>
+  2. <strong>Only dirty victims cost.</strong> A clean victim is simply overwritten for free. Write-through caches never have dirty lines, so step 1 never happens for them. (Your A3 mistake.)<br>
+  3. <strong>Write-through hides c; write-back always pays c.</strong> The cache write overlaps the slower source write, or stands alone.
+</div>
+<p>Worked example, with c = 2 and d = 30:</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Case</th><th>Steps</th><th>Total</th></tr>
+<tr><td>WT, no-allocate, miss</td><td>3</td><td>d = 30</td></tr>
+<tr><td>WT, allocate, miss</td><td>2 (fetch) + 3 (write source, c hidden)</td><td>2d = 60</td></tr>
+<tr><td>WT, any hit</td><td>3 (c hidden)</td><td>d = 30</td></tr>
+<tr><td>WB, allocate, miss, clean victim</td><td>2 (fetch) + 4 (cache write)</td><td>c + d = 32</td></tr>
+<tr><td>WB, allocate, miss, dirty victim</td><td>1 (write back) + 2 (fetch) + 4</td><td>c + 2d = 62</td></tr>
+<tr><td>WB, any hit</td><td>4</td><td>c = 2</td></tr>
+</table></div>
+
+<h3>Round two, with new numbers: c = 3, d = 40</h3>
+<p>Before you type an answer, write the step numbers down, for example “2 + 4”.</p>
+<div class="quiz numeric" data-answer="80"><p class="q">A·1. Write-through, write-allocate. A write <strong>miss</strong>?</p><div class="why"><p>Steps 2 + 3: fetch (40) + write source (40), with the cache write hidden. 2d = 80.</p></div></div>
+<div class="quiz numeric" data-answer="43"><p class="q">A·2. Write-back, write-allocate. A write miss that evicts a <strong>clean</strong> line?</p><div class="why"><p>Steps 2 + 4: fetch (40) + cache write (3) = 43. The clean victim costs nothing.</p></div></div>
+<div class="quiz numeric" data-answer="83"><p class="q">A·3. Write-back, write-allocate. A write miss that evicts a <strong>dirty</strong> line?</p><div class="why"><p>Steps 1 + 2 + 4: write back (40) + fetch (40) + cache write (3) = 83.</p></div></div>
+<div class="quiz numeric" data-answer="40"><p class="q">A·4. Write-through, no-write-allocate. A write miss?</p><div class="why"><p>Step 3 only: 40. Nothing enters the cache.</p></div></div>
+<div class="quiz numeric" data-answer="40"><p class="q">A·5. Write-through, write-allocate. A write <strong>hit</strong>?</p><div class="why"><p>Step 3, with c hidden: 40. Write-through hits are slow, which is why write-back exists.</p></div></div>
+<div class="quiz numeric" data-answer="80"><p class="q">A·6 (trap). Write-through, write-allocate. A write miss whose victim line was written to many times earlier. Latency?</p><div class="why"><p>Still 80. Under write-through every write already went to the source, so the victim is clean. Write-through never pays step 1.</p></div></div>
+<div class="quiz numeric" data-answer="3"><p class="q">A·7. Write-back, write-allocate. A write hit to a line that is already dirty?</p><div class="why"><p>Step 4 only: 3. Dirty or clean doesn't matter on a hit; the dirty bit just stays set.</p></div></div>
+<div class="quiz numeric" data-answer="5.4" data-tol="0.005"><p class="q">A·8. Write-back, write-allocate, c = 3, d = 40. 95% of writes hit. 20% of misses evict a dirty line. Average write time? (2 decimals)</p><div class="why"><p>Average miss = 0.8 × 43 + 0.2 × 83 = 34.4 + 16.6 = 51.<br>Average = 0.95 × 3 + 0.05 × 51 = 2.85 + 2.55 = 5.40.</p></div></div>
+<div class="quiz numeric" data-answer="44" data-tol="0.005"><p class="q">A·9. Write-through, write-allocate, d = 40. 90% of writes hit. Average write time?</p><div class="why"><p>Hit = 40, miss = 80. 0.9 × 40 + 0.1 × 80 = 36 + 8 = 44.</p></div></div>
+<div class="quiz numeric" data-answer="0.80" data-tol="0.005"><p class="q">A·10. Write-back, write-allocate: hit 2, clean miss 42. Write-through, no-allocate: every write 10. All evictions clean. Break-even hit rate? (2 decimals)</p><div class="why"><p>2h + 42(1 − h) = 10, so 42 − 40h = 10, 40h = 32 and h = 0.80. Above 0.80, write-back wins.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">A·11. Which step does a write-through cache <em>never</em> perform?</p><ol class="opts"><li>Fetch a line from the source</li><li>Write data to the source</li><li>Write back a dirty victim</li><li>Write data into the cache</li></ol><div class="why"><p>Write-through has no dirty bit, so its lines are always clean.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">A·12. Write-back, write-allocate. Which events make a write slower than c + d?</p><ol class="opts"><li>A hit on a dirty line</li><li>A miss that evicts a dirty line</li><li>A miss that evicts a clean line</li><li>A hit on a clean line</li></ol><div class="why"><p>Only the dirty victim adds the extra d. Hits cost c no matter what.</p></div></div>
+<p><strong>Drill: endless versions with random numbers.</strong> Write the step numbers each time.</p>
+<div id="dA"></div>
+
+<!-- ===================================================== E -->
+<h2>E · Conflict misses: the set table</h2>
+<p>On the mock you made every line miss on every pass. That only happens to lines in sets that <strong>overflow</strong>. Every other set behaves as if the array fitted.</p>
+<ol class="steps">
+<li><strong>Count lines.</strong> Cache lines = sets × ways. Array lines = array bytes ÷ line size. Extra = array lines − cache lines.</li>
+<li><strong>Place the extras.</strong> Line <em>n</em> goes to set <em>n</em> mod sets. The extra lines land in sets 0, 1, …, extra − 1, which gives those sets one more line than they have ways.</li>
+<li><strong>Each set on its own:</strong>
+  <ul>
+  <li>lines in set ≤ ways: each line misses <strong>once</strong> (a cold miss), then always hits.</li>
+  <li>lines in set &gt; ways, with LRU and the same cyclic order: <strong>every</strong> line in that set misses on <strong>every</strong> pass, because LRU always evicts the line that comes next.</li>
+  </ul></li>
+<li><strong>Total</strong> = (overflow-set lines × passes) + (all other lines × 1).</li>
+<li><strong>Stride smaller than a line?</strong> The other accesses in a line come right after its miss, so they hit. The misses don't change; only the number of accesses grows.</li>
+</ol>
+<div class="callout key">
+  <span class="label">Worked example: E1 from Lesson 10</span>
+  32 sets × 2 ways = 64 lines. The array has 70 lines, so 6 extra land in sets 0–5.<br>
+  Sets 0–5 hold 3 lines each in 2 ways and overflow: 6 × 3 = 18 lines × 50 passes = 900.<br>
+  Sets 6–31: 26 × 2 = 52 lines, each missing once = 52.<br>
+  Total = 952. Not 70 × 50 = 3500: that is the “everything thrashes” mistake.
+</div>
+
+<h3>Round two: 16 sets, 4-way, 64-byte lines, LRU, line-aligned array, 100 passes</h3>
+<div class="quiz numeric" data-answer="64"><p class="q">E·1. How many lines does the cache hold?</p><div class="why"><p>16 × 4 = 64.</p></div></div>
+<div class="quiz numeric" data-answer="3"><p class="q">E·2. The array is 68 lines, read with stride 64. Which set does the <em>last</em> line go into?</p><div class="why"><p>The last line is number 67, and 67 mod 16 = 3. The 4 extras are lines 64–67, in sets 0–3.</p></div></div>
+<div class="quiz numeric" data-answer="2048"><p class="q">E·3. Same array, 100 passes. Total misses?</p><div class="why"><p>Sets 0–3 have 5 lines in 4 ways: 4 × 5 = 20 lines × 100 = 2000.<br>Sets 4–15: 12 × 4 = 48 lines, once each = 48.<br>Total 2048.</p></div></div>
+<div class="quiz numeric" data-answer="0.9247" data-tol="0.0005"><p class="q">E·4. Same array, now stride 16 (4 accesses per line). Hit rate over 100 passes? (4 decimals)</p><div class="why"><p>The misses stay at 2048. Accesses = 68 × 4 × 100 = 27200. Hit rate = 1 − 2048/27200 = 0.9247.</p></div></div>
+<div class="quiz numeric" data-answer="64"><p class="q">E·5. The array is exactly 64 lines. Total misses over 100 passes?</p><div class="why"><p>Every set holds exactly 4 lines in 4 ways, so there are only cold misses: 64.</p></div></div>
+<div class="quiz numeric" data-answer="8000"><p class="q">E·6. The array is 80 lines. Total misses over 100 passes?</p><div class="why"><p>16 extras, so <em>every</em> set gets 5 lines in 4 ways. Every set overflows: 80 × 100 = 8000. This is the only case where “everything misses every pass” is correct.</p></div></div>
+<div class="quiz numeric" data-answer="860"><p class="q">E·7. Back to 68 lines, but the cache is direct-mapped with 64 sets (same size). Total misses over 100 passes?</p><div class="why"><p>Sets 0–3 each get 2 lines in 1 way: 8 lines × 100 = 800. The other 60 lines miss once: 60. Total 860.</p></div></div>
+<div class="quiz numeric" data-answer="6800"><p class="q">E·8. 68 lines again, but the cache is fully associative with 64 lines, LRU. Total misses over 100 passes?</p><div class="why"><p>There is one set, and it overflows, so every line misses on every pass: 68 × 100 = 6800.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">E·9. Looking at E·3, E·7 and E·8: for an array slightly bigger than the cache, read cyclically with LRU, more associativity…</p><ol class="opts"><li>makes the misses go up</li><li>makes the misses go down</li><li>leaves the misses the same</li><li>depends on the stride</li></ol><div class="why"><p>860 → 2048 → 6800. More ways means more lines share each overflowing set, and all of them thrash together. It's the opposite of the usual intuition, which is exactly why it gets asked.</p></div></div>
+<p><strong>Drill.</strong></p>
+<div id="dE"></div>
+
+<!-- ===================================================== F -->
+<h2>F · Coherence: four rules</h2>
+<p>Ask two questions for every event: <strong>who did it</strong> (me or another core), and <strong>does anyone else hold the line?</strong></p>
+<div class="table-scroll"><table class="data">
+<tr><th>Event</th><th>Me</th><th>Everyone else</th><th>Bus message?</th></tr>
+<tr><td><strong>I read</strong>, miss</td><td>MESI: <strong>E</strong> if nobody else has it, otherwise <strong>S</strong><br>MSI: always <strong>S</strong></td><td>MESI: an M or E copy drops to S. Course MSI: an M copy goes to I. An M copy always writes back first.</td><td>yes (read request)</td></tr>
+<tr><td><strong>I write</strong></td><td><strong>M</strong></td><td>All go to <strong>I</strong></td><td>From S or I: yes (invalidate). From <strong>E or M: no</strong></td></tr>
+<tr><td><strong>Another core reads</strong></td><td>M → write back, then MESI <strong>S</strong>, course MSI <strong>I</strong><br>E → S · S → S · I → I</td><td></td><td></td></tr>
+<tr><td><strong>Another core writes</strong></td><td>Anything → <strong>I</strong> (M writes back first)</td><td></td><td></td></tr>
+</table></div>
+<div class="callout key">
+  <span class="label">The only three things that differ between MSI and MESI</span>
+  1. A read miss with no other copy: MSI gives S, MESI gives <strong>E</strong>.<br>
+  2. A write to that line afterwards: MSI must invalidate (S → M), MESI is <strong>silent</strong> (E → M).<br>
+  3. A remote read of an M line: course MSI gives <strong>I</strong>, MESI gives <strong>S</strong>. Both write back.
+</div>
+
+<h3>Round two: follow line X through two cores, using MESI</h3>
+<p>Both caches start in I. Answer each step in order.</p>
+<div class="quiz" data-answer="1"><p class="q">F·1. Core 1 reads X. Core 1's state?</p><ol class="opts"><li>S</li><li>E</li><li>M</li><li>I</li></ol><div class="why"><p>Nobody else has it, and it's clean: E.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">F·2. Core 2 reads X. Core 1's state now?</p><ol class="opts"><li>S</li><li>E</li><li>M</li><li>I</li></ol><div class="why"><p>A remote read of an E line drops it to S. Core 2 also gets S, because someone else has it.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">F·3. Core 2 writes X. What happens?</p><ol class="opts"><li>Core 2 → M, invalidate sent, Core 1 → I</li><li>Core 2 → M, no message, Core 1 stays S</li><li>Core 2 → E, Core 1 → I</li><li>Both go to M</li></ol><div class="why"><p>Core 2 was in S, so others might hold copies; it must broadcast an invalidate.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">F·4. Core 1 reads X. Core 2's state?</p><ol class="opts"><li>S, after a write-back</li><li>I, after a write-back</li><li>S, with no write-back</li><li>M, unchanged</li></ol><div class="why"><p>Core 2 holds dirty data, so it writes back. In MESI, an M line drops to S on a remote read. Core 1 gets S.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">F·5. Same as F·4, but with the <strong>course MSI</strong> diagram. Core 2's state?</p><ol class="opts"><li>S, after a write-back</li><li>I, after a write-back</li><li>S, with no write-back</li><li>M, unchanged</li></ol><div class="why"><p>The course MSI takes M to I on any remote R/W. This is the most common trap on the quiz.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">F·6. A new line Y. Core 1 reads Y (nobody else has it), then writes Y. How many bus messages under MESI, and under MSI?</p><ol class="opts"><li>MESI 2, MSI 2</li><li>MESI 2, MSI 1</li><li>MESI 1, MSI 2</li><li>MESI 1, MSI 1</li></ol><div class="why"><p>Both send a read request. MESI then goes E → M silently. MSI was in S, so it must also broadcast an invalidate.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">F·7. Core 1 holds Z in M. Core 2 <strong>writes</strong> Z. Core 1's state?</p><ol class="opts"><li>S, after a write-back</li><li>M, unchanged</li><li>E, after a write-back</li><li>I, after a write-back</li></ol><div class="why"><p>A remote write always gives I, in both protocols. Dirty data is written back first.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">F·8. Two MESI caches, the <strong>same address</strong>. Which pair can exist?</p><ol class="opts"><li>E and S</li><li>E and I</li><li>M and S</li><li>E and E</li></ol><div class="why"><p>E and M mean “only I have it”, so the other cache must be I.</p></div></div>
+<p><strong>Drill: one cache's next state.</strong></p>
+<div id="dF1"></div>
+<p><strong>Drill: two cores.</strong></p>
+<div id="dF2"></div>
+
+<!-- ===================================================== G -->
+<h2>G · Concepts: two tests</h2>
+<h3>Flynn: count the streams</h3>
+<p>Instruction streams = how many independent programs (program counters) run at once. Data streams = how many pieces of data one instruction works on.</p>
+<div class="table-scroll"><table class="data">
+<tr><th></th><th>Single data</th><th>Multiple data</th></tr>
+<tr><th>Single instruction</th><td><strong>SISD</strong>: an old single-core CPU</td><td><strong>SIMD</strong>: one instruction on many values (vector, AVX, GPU)</td></tr>
+<tr><th>Multiple instruction</th><td><strong>MISD</strong>: rare, you won't need an example</td><td><strong>MIMD</strong>: multicore, multiprocessor, distributed</td></tr>
+</table></div>
+<div class="quiz" data-answer="1"><p class="q">G·1. One AVX instruction adds 8 pairs of floats at once. Flynn class?</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>One instruction, 8 data items.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">G·2. A 16-core server runs a web server on some cores and a database on others. Flynn class?</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>Each core has its own program counter and its own data.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">G·3. A GPU applies the same shading instruction to millions of pixels. Flynn class?</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>The same instruction across many data items is the SIMD idea.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">G·4. A single-core, non-vector CPU running one program. Flynn class?</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>One stream of instructions, each on one piece of data.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">G·5. A cluster of 100 machines connected by a network. Flynn class?</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>Many independent programs on many data. Distributed is still MIMD; it just doesn't share memory.</p></div></div>
+
+<h3>Locality: ask two yes/no questions</h3>
+<div class="callout key">
+  <span class="label">The test</span>
+  <strong>Temporal:</strong> is the <em>same</em> address used again soon? (reuse)<br>
+  <strong>Spatial:</strong> is a <em>nearby</em> address (in the same line) used soon? (neighbours)<br>
+  Answer each one separately. Two yeses = both; two noes = neither.
+</div>
+<div class="quiz" data-answer="2"><p class="q">G·6. A small 1 KB array is summed 1000 times in a loop. The array accesses show…</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>Neighbours are used in a row (spatial), and each element comes back every pass (temporal).</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">G·7. The loop variable <code>sum</code> in <code>for (...) sum += a[i];</code> shows…</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>It's one address, used on every iteration. There are no neighbours involved.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">G·8. A linked list whose nodes are scattered randomly through memory is walked once. The node accesses show…</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>No reuse (once), and the next node is far away (not in the same line).</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">G·9. One column of a huge 2D <code>double</code> array is read once, with rows 8000 bytes long and 64-byte lines. The accesses show…</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>The stride is 8000 bytes, much bigger than a line, so there's no neighbour use, and nothing is reused.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">G·10. The instruction fetches for a tight loop that runs 1000 times show…</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>Instructions sit one after another (spatial), and the loop body is fetched again on every iteration (temporal).</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.5 (writes), 3.6 (stride, conflicts), 3.7 and the MESI diagram (coherence), 2.6 and 3.1 (Flynn, locality).
+</div>
+<p class="ask">Tell me in the terminal which ones you missed. Give the step list you wrote for any A question you got wrong, and I'll find the exact slip.</p>
+<nav class="lesson-nav">
+  <a href="0011-r3-weak-spots.html">← Previous</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script>
+  Cache.write(document.getElementById('dA'));
+  Cache.stride(document.getElementById('dE'));
+  Cache.coherence(document.getElementById('dF1'));
+  Cache.pairs(document.getElementById('dF2'));
+</script>
+</body>
+</html>
