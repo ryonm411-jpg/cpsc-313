@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 3 Targeted Practice</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 10</div>
+  <h1>Targeted Practice</h1>
+  <p class="subtitle">Built from the questions you missed on the mock quiz, with new numbers.</p>
+</header>
+<div class="callout key">
+  <span class="label">The write rule</span>
+  With c = cache time and d = source time:<br>
+  <strong>Write-through:</strong> the cache write runs at the same time as the source write, so <strong>c is hidden</strong>. A hit costs d, and a write-allocate miss costs 2d.<br>
+  <strong>Write-back:</strong> <strong>c is always added</strong>. A hit costs c, a clean miss costs c + d, and a dirty miss costs c + 2d.
+</div>
+<div class="callout">
+  <span class="label">How to take it</span>
+  Use paper, a calculator and the <a href="../../../summary-of-cache-parameters.pdf">cache parameters</a> and <a href="../../../diagramMESI.pdf">MESI</a> sheets. Write your reasoning before you check. Group A carries the most weight, because write policies cost you the most points on the mock.
+</div>
+
+<h2>A · Writes (c = 2, d = 30)</h2>
+<h3>A1</h3>
+<div class="quiz numeric" data-answer="30"><p class="q">Write-through, no-write-allocate. Latency of a write <strong>miss</strong> in ns?</p><div class="why"><p>The miss goes straight to the source, and the cache does nothing. A hit also costs 30, because c is hidden behind d.</p></div></div>
+<h3>A2</h3>
+<div class="quiz numeric" data-answer="60"><p class="q">Write-through, write-allocate. Latency of a write miss in ns?</p><div class="why"><p>2d = 30 + 30: one source write for the data, plus one source read to fetch the line. The cache time stays hidden.</p></div></div>
+<h3>A3</h3>
+<div class="quiz numeric" data-answer="32"><p class="q">Write-back, write-allocate. A write miss with a <strong>clean</strong> eviction, in ns?</p><div class="why"><p>c + d = 2 + 30. Fetch the line, then write into the cache.</p></div></div>
+<h3>A4</h3>
+<div class="quiz numeric" data-answer="62"><p class="q">Write-back, write-allocate. A write miss with a <strong>dirty</strong> eviction, in ns?</p><div class="why"><p>c + 2d = 2 + 30 + 30. Write the dirty line back, fetch the new one, then write into the cache. On the mock you left off the c.</p></div></div>
+<h3>A5</h3>
+<div class="quiz numeric" data-answer="6.2" data-tol="0.005"><p class="q">Write-back, write-allocate, c = 2, d = 30. 90% of writes hit, and 40% of the misses evict a dirty line. Average write time in ns? (2 decimals)</p><div class="why"><p>Average miss = 0.6×32 + 0.4×62 = 44. Average = 0.9×2 + 0.1×44 = 1.8 + 4.4 = 6.20.</p></div></div>
+<h3>A6</h3>
+<div class="quiz numeric" data-answer="0.70" data-tol="0.005"><p class="q">Write-back, write-allocate: hit 3, clean miss 33. Write-through, no-allocate: every write 12. All evictions clean. Break-even hit rate? (2 decimals)</p><div class="why"><p>3h + 33(1 − h) = 12, so 33 − 30h = 12, 30h = 21 and h = 0.70.</p></div></div>
+<h3>A7</h3>
+<div class="quiz" data-answer="1"><p class="q">A program appends to a 10 GB log file that is never read back. Which miss policy suits it best?</p><ol class="opts"><li>Write-allocate</li><li>No-write-allocate</li><li>Allocate on read only after a write</li><li>Allocate whichever line is LRU</li></ol><div class="why"><p>Loading lines that are never read just pushes useful data out of the cache.</p></div></div>
+<h3>A8</h3>
+<div class="quiz" data-answer="0"><p class="q">A program increments one counter a million times. Which write policy sends the fewest writes to the source?</p><ol class="opts"><li>Write-back</li><li>Write-through</li><li>The same for both</li><li>It depends on associativity</li></ol><div class="why"><p>Write-back coalesces the writes: the line goes to the source once, on eviction. Write-through sends a million source writes.</p></div></div>
+
+<h2>B · Multi-level (L1 hit 2; L1↔L2 transfer 10; L2↔memory transfer 50; write-back)</h2>
+<h3>B1</h3>
+<div class="quiz numeric" data-answer="11" data-tol="0.005"><p class="q">60% of accesses hit L1. Of the L1 misses, 75% hit L2. All evictions are clean. Average in ns? (2 decimals)</p><div class="why"><p>Every path ends with the L1 hit. L1 hit = 2. L2 hit = 10 + 2 = 12. L2 miss = 50 + 10 + 2 = 62.<br>0.6×2 + 0.4×(0.75×12 + 0.25×62) = 1.2 + 0.4×24.5 = 11.00.</p></div></div>
+<h3>B2</h3>
+<div class="quiz numeric" data-answer="72"><p class="q">A read misses L1 and evicts a <strong>dirty</strong> line, then misses L2 and evicts a <strong>clean</strong> line. Time in ns?</p><div class="why"><p>10 (write the dirty L1 line back) + 50 (fetch from memory) + 10 (move to L1) + 2 (L1 hit) = 72.</p></div></div>
+<h3>B3</h3>
+<div class="quiz numeric" data-answer="22"><p class="q">A read misses L1 and evicts a dirty line, then hits L2. Time in ns?</p><div class="why"><p>10 (write back) + 10 (fetch) + 2 (hit) = 22.</p></div></div>
+
+<h2>C · Bits</h2>
+<h3>C1</h3>
+<div class="quiz numeric" data-answer="9"><p class="q">An 8-way, 128 KB cache has 32-byte lines. How many index bits?</p><div class="why"><p>Lines → sets → log₂. 131072 ÷ 32 = 4096 lines. ÷ 8 = 512 sets. log₂(512) = 9.</p></div></div>
+<h3>C2</h3>
+<div class="quiz numeric" data-answer="26"><p class="q">Same cache, 40-bit addresses. How many tag bits?</p><div class="why"><p>Offset = log₂(32) = 5. Tag = 40 − 9 − 5 = 26.</p></div></div>
+<h3>C3</h3>
+<div class="quiz" data-answer="2"><p class="q">Keep the size, line size and address width fixed, and double the associativity. What happens?</p><ol class="opts"><li>index +1, offset same, tag −1</li><li>index same, offset −1, tag +1</li><li>index −1, offset same, tag +1</li><li>index −1, offset +1, tag same</li></ol><div class="why"><p>The same number of lines shared out two times as many per set gives half as many sets. One bit moves from index to tag.</p></div></div>
+
+<h2>D · LRU (fully associative)</h2>
+<h3>D1</h3>
+<div class="quiz numeric" data-answer="2"><p class="q">3 slots, LRU, sequence A, B, C, A, D, B, A, C. How many hits?</p><div class="why"><p>Write the order after every access (LRU first): A m [A] · B m [A B] · C m [A B C] · A <strong>hit</strong> [B C A] · D m, evicts B [C A D] · B m, evicts C [A D B] · A <strong>hit</strong> [D B A] · C m, evicts D. 2 hits.</p></div></div>
+<h3>D2</h3>
+<div class="quiz numeric" data-answer="3"><p class="q">2 slots, LRU, sequence A, B, B, A, C, A, B, C. How many hits?</p><div class="why"><p>A m · B m [A B] · B <strong>hit</strong> [A B] · A <strong>hit</strong> [B A] · C m, evicts B [A C] · A <strong>hit</strong> [C A] · B m, evicts C [A B] · C m, evicts A. 3 hits.</p></div></div>
+
+<h2>E · Conflict misses</h2>
+<h3>E1</h3>
+<div class="quiz numeric" data-answer="952"><p class="q">The cache has 32 sets, is 2-way, and has 32-byte lines. An array is line-aligned and 6 lines bigger than the cache. It is read with stride 32, 50 times, LRU. Total misses?</p><div class="why"><p>The cache holds 64 lines, so the array has 70. Sets 0–5 each get 3 lines into 2 ways, so with LRU those 18 lines miss on <em>every</em> pass: 18 × 50 = 900. The other 26 sets hold 52 lines, and each misses once: 52. Total 952.</p></div></div>
+<h3>E2</h3>
+<div class="quiz numeric" data-answer="64"><p class="q">Same cache, but the array exactly fills it (64 lines). Same 50 passes. Total misses?</p><div class="why"><p>Only cold misses: 64. Everything hits after the first pass.</p></div></div>
+<h3>E3</h3>
+<div class="quiz numeric" data-answer="952"><p class="q">Back to the E1 array (70 lines), but now read with stride 16, so there are two accesses per line. Total misses over 50 passes?</p><div class="why"><p>The second access to each line comes right after the first, so it always hits, even in the thrashing sets. The misses are the same as in E1: 952. Only the number of accesses doubles (7000), so the hit rate goes up.</p></div></div>
+
+<h2>F · Coherence</h2>
+<h3>F1</h3>
+<div class="quiz" data-answer="0"><p class="q">MESI. A line is in M in this cache, and another core reads it. New state?</p><ol class="opts"><li>S, after a write-back</li><li>I, after a write-back</li><li>S, with no write-back</li><li>M, with no change</li></ol><div class="why"><p>The data is dirty, so it must be written back. In MESI, both copies can then be shared.</p></div></div>
+<h3>F2</h3>
+<div class="quiz" data-answer="1"><p class="q">Course MSI diagram. A line is in M in this cache, and another core reads it. New state?</p><ol class="opts"><li>S, after a write-back</li><li>I, after a write-back</li><li>S, with no write-back</li><li>M, with no change</li></ol><div class="why"><p>In the course MSI, a remote R/W takes M to I. Only MESI goes to S here, so this is the trap.</p></div></div>
+<h3>F3</h3>
+<div class="quiz" data-answer="1"><p class="q">MESI. This core reads a line that no other cache holds. What state does the line get?</p><ol class="opts"><li>S</li><li>E</li><li>M</li><li>I</li></ol><div class="why"><p>It's the only copy and it's clean, so E.</p></div></div>
+<h3>F4</h3>
+<div class="quiz" data-answer="2"><p class="q">The same core now writes to that line. What happens?</p><ol class="opts"><li>E → M, after broadcasting an invalidate</li><li>E → S, then S → M</li><li>E → M, with no bus message</li><li>It stays in E and sets the dirty bit</li></ol><div class="why"><p>No other copy exists, so there is nothing to invalidate. This silent E → M is MESI's advantage over MSI.</p></div></div>
+
+<h2>G · Concepts</h2>
+<h3>G1</h3>
+<div class="quiz" data-answer="3"><p class="q">A multicore chip runs a different program on each core. Its Flynn class is…</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>Many instruction streams, each working on its own data.</p></div></div>
+<h3>G2</h3>
+<div class="quiz" data-answer="1"><p class="q">A program reads a huge array once, from start to end. Which locality does it show?</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>Neighbouring elements are used one after another (spatial), but nothing is reused (no temporal).</p></div></div>
+
+<p class="ask">Tell me in the terminal which ones you missed. If group A or E goes badly, I'll make a second round on that group.</p>
+<nav class="lesson-nav">
+  <a href="0009-mock-quiz.html">← Mock quiz</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+  <a href="0011-r3-weak-spots.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

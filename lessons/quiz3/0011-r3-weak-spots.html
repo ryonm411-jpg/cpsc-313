@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 3 R3 Weak Spots</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 prep · Lesson 11</div>
+  <h1>R3 Weak Spots</h1>
+  <p class="subtitle">New variants of R3.4, 3.5, 3.10, 3.11, 3.12, 3.13, 3.14 and 3.15, the practice questions you found hardest.</p>
+</header>
+<div class="callout key">
+  <span class="label">How to take it</span>
+  Use paper, a calculator and the quiz reference sheets: <a href="../../../summary-of-cache-parameters.pdf">cache parameters</a>, <a href="../../../amdahls-reference.pdf">Amdahl's Law</a> and the <a href="../../../diagramMESI.pdf">MESI diagram</a>. Write your reasoning before you check. I checked every trace and miss count here against a cache simulator. This is my own practice set, not PrairieLearn's.
+</div>
+
+<h2>1 · Properties to bits (R3.4)</h2>
+<div class="callout">
+  <span class="label">Method</span>
+  offset b = log₂(line size) · lines = size ÷ line size · sets = lines ÷ ways · index s = log₂(sets) · tag t = address bits − s − b.<br>
+  To go the other way: size = 2<sup>s</sup> × ways × 2<sup>b</sup>.
+</div>
+<h3>1.1</h3>
+<div class="quiz numeric" data-answer="19"><p class="q">A 2-way, 16 KB cache has 32-byte lines and 32-bit addresses. How many tag bits?</p><div class="why"><p>b = 5. 16384 ÷ 32 = 512 lines. ÷ 2 = 256 sets, so s = 8. t = 32 − 8 − 5 = 19.</p></div></div>
+<h3>1.2</h3>
+<div class="quiz numeric" data-answer="2048"><p class="q">A 4-way, 256 KB cache has 128-byte lines. How many lines does it hold?</p><div class="why"><p>262144 ÷ 128 = 2048.</p></div></div>
+<h3>1.3</h3>
+<div class="quiz numeric" data-answer="32"><p class="q">Same cache, 48-bit addresses. How many tag bits?</p><div class="why"><p>2048 ÷ 4 = 512 sets, so s = 9. b = 7. t = 48 − 9 − 7 = 32.</p></div></div>
+<h3>1.4</h3>
+<div class="quiz numeric" data-answer="64"><p class="q">A direct-mapped cache has 10 index bits and 6 offset bits. What is its size in KB?</p><div class="why"><p>2¹⁰ sets × 1 way × 2⁶ bytes = 65536 bytes = 64 KB.</p></div></div>
+<h3>1.5</h3>
+<div class="quiz numeric" data-answer="512"><p class="q">A 4-way cache has 12 index bits and 5 offset bits. What is its size in KB?</p><div class="why"><p>4096 × 4 × 32 = 524288 bytes = 512 KB.</p></div></div>
+<h3>1.6</h3>
+<div class="quiz numeric" data-answer="26"><p class="q">A <strong>fully associative</strong> 8 KB cache has 64-byte lines and 32-bit addresses. How many tag bits?</p><div class="why"><p>Fully associative means one set, so s = 0. t = 32 − 0 − 6 = 26.</p></div></div>
+
+<h2>2 · Changing parameters (R3.5)</h2>
+<div class="callout">
+  <span class="label">Two equations that must stay true</span>
+  address bits = t + s + b · size = sets × ways × line size. Change one value, then work out what else has to move to keep both equations true.
+</div>
+<h3>2.1</h3>
+<div class="quiz" data-answer="0"><p class="q">Halve the cache size, keeping the ways, the line size and the address width fixed. What happens?</p><ol class="opts"><li>index −1, offset same, tag +1</li><li>index same, offset −1, tag +1</li><li>index −1, offset +1, tag same</li><li>index +1, offset same, tag −1</li></ol><div class="why"><p>Half as many lines with the same ways gives half as many sets.</p></div></div>
+<h3>2.2</h3>
+<div class="quiz" data-answer="3"><p class="q">Double the ways <strong>and</strong> double the size, keeping the line size fixed. What happens?</p><ol class="opts"><li>index −1, tag +1</li><li>index +1, tag −1</li><li>offset +1, tag −1</li><li>All the bit counts stay the same</li></ol><div class="why"><p>Sets = size ÷ (ways × line). Both the top and the bottom double, so the number of sets doesn't change.</p></div></div>
+<h3>2.3</h3>
+<div class="quiz" data-answer="1"><p class="q">Add one offset bit, keeping the index bits, the ways and the address width fixed. Which must be true?</p><ol class="opts"><li>The tag gains a bit, and the size stays the same</li><li>The tag loses a bit, and the size doubles</li><li>The tag stays the same, and the size halves</li><li>The tag loses a bit, and the size stays the same</li></ol><div class="why"><p>t = width − s − b, so t goes down by 1. Lines are twice as large, with the same sets and ways, so the cache doubles.</p></div></div>
+<h3>2.4</h3>
+<div class="quiz" data-answer="2"><p class="q">The tag loses one bit, keeping the line size and the address width fixed. Which must be true?</p><ol class="opts"><li>The line size doubles</li><li>The ways must double</li><li>The number of sets doubles</li><li>The cache size halves</li></ol><div class="why"><p>b is fixed, so the bit must go to the index, which doubles the number of sets. The size or the ways could change either way to make that happen, so neither is forced.</p></div></div>
+
+<h2>3 · Write-through vs write-back (R3.10)</h2>
+<h3>3.1</h3>
+<div class="quiz numeric" data-answer="0.60" data-tol="0.005"><p class="q">Write-back, write-allocate: hit 2, clean miss 22. Write-through, no-allocate: every write 10. All evictions clean. Break-even hit rate? (2 decimals)</p><div class="why"><p>2h + 22(1 − h) = 10, so 22 − 20h = 10, 20h = 12 and h = 0.60.</p></div></div>
+<h3>3.2</h3>
+<div class="quiz numeric" data-answer="0.40" data-tol="0.005"><p class="q">Write-back, write-allocate with c = 2, d = 20, and half of all misses evict a dirty line. Write-through, no-allocate costs 20 for every write. Break-even hit rate? (2 decimals)</p><div class="why"><p>Clean miss = c + d = 22. Dirty miss = c + 2d = 42. Average miss = 0.5×22 + 0.5×42 = 32. Then 2h + 32(1 − h) = 20, so 30h = 12 and h = 0.40.</p></div></div>
+<h3>3.3</h3>
+<div class="quiz" data-answer="0"><p class="q">In 3.2 the real hit rate is 0.90. Which is faster?</p><ol class="opts"><li>Write-back is faster</li><li>Write-through is faster</li><li>They are exactly equal</li><li>It depends on the reads</li></ol><div class="why"><p>Above the break-even rate, the cheap write-back hits win: 0.9×2 + 0.1×32 = 5, compared with 20.</p></div></div>
+<h3>3.4</h3>
+<div class="quiz numeric" data-answer="0.75" data-tol="0.005"><p class="q">Write-back, write-allocate: hit 1, clean miss 41. Write-through, no-allocate: every write 11. All evictions clean. Break-even hit rate? (2 decimals)</p><div class="why"><p>h + 41(1 − h) = 11, so 40h = 30 and h = 0.75.</p></div></div>
+
+<h2>4 · Stride and throughput (R3.11)</h2>
+<div class="callout">
+  <span class="label">Rule</span>
+  For one cold, line-aligned pass with stride smaller than the line: accesses per line = line ÷ stride, and hit rate = 1 − stride ÷ line. If the stride is at least one line, every access misses.
+</div>
+<h3>4.1</h3>
+<div class="quiz numeric" data-answer="0.9375" data-tol="0.0005"><p class="q"><code>int a[N]</code> (4-byte ints), 64-byte lines, read once with stride 1 element. Hit rate? (4 decimals)</p><div class="why"><p>16 ints per line: 1 miss and 15 hits. 15/16 = 0.9375.</p></div></div>
+<h3>4.2</h3>
+<div class="quiz numeric" data-answer="0.75" data-tol="0.005"><p class="q">Same array, read with stride 4 elements. Hit rate?</p><div class="why"><p>Stride 16 bytes gives 4 accesses per line: 1 miss and 3 hits.</p></div></div>
+<h3>4.3</h3>
+<div class="quiz numeric" data-answer="0"><p class="q">Same array, read with stride 32 elements. Hit rate?</p><div class="why"><p>The stride is 128 bytes, more than one line, so every access hits a new line.</p></div></div>
+<h3>4.4</h3>
+<div class="quiz numeric" data-answer="8000"><p class="q"><code>long a[1000][1000]</code>, with the loop <code>for (j…) for (i…) sum += a[i][j];</code>. Stride in bytes?</p><div class="why"><p>The inner loop changes i, which moves down a column. In row-major order that is one whole row: 1000 × 8 = 8000.</p></div></div>
+<h3>4.5</h3>
+<div class="quiz" data-answer="1"><p class="q">How do you get spatial locality back in 4.4?</p><ol class="opts"><li>Use a bigger cache with the same line</li><li>Swap the loops, so j is the inner loop</li><li>Change the replacement policy to LRU</li><li>Make the cache fully associative</li></ol><div class="why"><p>With j inner, the stride is 8 bytes, so each line gives 8 accesses.</p></div></div>
+<h3>4.6</h3>
+<div class="quiz" data-answer="2"><p class="q">Program X reads 4× as many bytes as Program Y but finishes sooner. What is the most likely reason?</p><ol class="opts"><li>X uses write-through</li><li>X has more temporal locality</li><li>X reads sequentially, and Y strides by a row</li><li>Y's array is too small to cache</li></ol><div class="why"><p>Sequential access uses whole lines, and the hardware prefetches them. Y fetches a new line for every element it reads.</p></div></div>
+
+<h2>5 · Abstract stride and policies (R3.12)</h2>
+<div class="callout">
+  <span class="label">Reading a trace</span>
+  Letters are consecutive lines. Count the accesses that land in each line: 1 per line means one line exactly · skipped letters mean more than one line · always 2 means half a line · 2 or 3 means under half a line · a mix of 1 and 2 means between half a line and one line.
+</div>
+<h3>5.1</h3>
+<div class="quiz" data-answer="2"><p class="q">Trace A,A,B,B,C,C,D,D. What is the stride?</p><ol class="opts"><li>More than one line</li><li>Exactly one line</li><li>Exactly half a line</li><li>Under half a line</li></ol><div class="why"><p>Exactly 2 accesses per line.</p></div></div>
+<h3>5.2</h3>
+<div class="quiz" data-answer="0"><p class="q">Trace A,C,E,G,I. What is the stride?</p><ol class="opts"><li>More than one line</li><li>Exactly one line</li><li>Exactly half a line</li><li>Under half a line</li></ol><div class="why"><p>Lines are skipped.</p></div></div>
+<h3>5.3</h3>
+<div class="quiz" data-answer="1"><p class="q">Trace A,B,B,C,D,D,E. What is the stride?</p><ol class="opts"><li>Exactly one line</li><li>Between half a line and one line</li><li>Exactly half a line</li><li>Under half a line</li></ol><div class="why"><p>A mix of 1 and 2 accesses per line.</p></div></div>
+<p>For 5.4 to 5.7: the trace (A,B,C,D,E) repeats 3 times, with 15 accesses in all. A–E are consecutive lines, and A falls in slot 0. The cache holds <strong>4 lines</strong>.</p>
+<h3>5.4</h3>
+<div class="quiz numeric" data-answer="0"><p class="q">Fully associative, LRU. How many hits?</p><div class="why"><p>5 lines go round in a cycle through 4 slots. LRU always evicts the line that comes back next, so you get 0 hits.</p></div></div>
+<h3>5.5</h3>
+<div class="quiz numeric" data-answer="6"><p class="q">Direct-mapped. How many hits?</p><div class="why"><p>A and E share slot 0 and keep evicting each other. B, C and D hit on passes 2 and 3: 3 × 2 = 6.</p></div></div>
+<h3>5.6</h3>
+<div class="quiz numeric" data-answer="8"><p class="q">Fully associative, Belady (optimal). How many hits?</p><div class="why"><p>Misses on A, B, C, D. E evicts D, because D is used farthest away. Then A, B and C hit. D evicts C. E, A and B hit. C evicts A (A is never used again). D and E hit. 3 + 3 + 2 = 8 hits.</p></div></div>
+<h3>5.7</h3>
+<div class="quiz" data-answer="2"><p class="q">Now the trace is (A,B,C,D) × 3 in the same 4-line cache. Which gets more hits?</p><ol class="opts"><li>Fully associative LRU</li><li>Direct-mapped</li><li>It is a tie</li><li>Not enough information</li></ol><div class="why"><p>Everything fits in both. Each has 4 cold misses and 8 hits.</p></div></div>
+
+<h2>6 · Arrays slightly too big (R3.13)</h2>
+<p>The cache is 64 KB and 8-way with 64-byte lines, so it has 1024 lines in 128 sets, and uses LRU. A line-aligned array is read with <strong>stride 8 bytes</strong> (8 accesses per line), 200 times.</p>
+<h3>6.1</h3>
+<div class="quiz numeric" data-answer="1024"><p class="q">The array is exactly 64 KB. Total misses?</p><div class="why"><p>Every line fits, so there are only cold misses: 1024.</p></div></div>
+<h3>6.2</h3>
+<div class="quiz numeric" data-answer="10"><p class="q">The array is 640 bytes bigger. How many sets thrash?</p><div class="why"><p>640 ÷ 64 = 10 extra lines, numbered 1024–1033. They go to sets 0–9.</p></div></div>
+<h3>6.3</h3>
+<div class="quiz numeric" data-answer="18944"><p class="q">Same oversized array. Total misses?</p><div class="why"><p>10 sets each hold 9 lines in 8 ways, so those 90 lines miss on every pass: 90 × 200 = 18000. The other 118 sets hold 944 lines, and each misses once. Total 18944. The other 7 accesses in each line always hit.</p></div></div>
+<h3>6.4</h3>
+<div class="quiz numeric" data-answer="34864"><p class="q">Same size, but the cache is now <strong>16-way</strong> (64 sets). Total misses?</p><div class="why"><p>The extra lines still go to sets 0–9, but now each of those sets holds 17 lines in 16 ways, so 170 lines thrash: 34000. The other 54 sets hold 864 lines, which miss once. Total 34864.</p></div></div>
+<h3>6.5</h3>
+<div class="quiz numeric" data-answer="5014"><p class="q">Same size, but the cache is now <strong>direct-mapped</strong> (1024 sets). Total misses?</p><div class="why"><p>Lines 0–9 clash only with lines 1024–1033, so 20 lines miss on every pass: 4000. The other 1014 lines miss once. Total 5014.</p></div></div>
+<h3>6.6</h3>
+<div class="quiz" data-answer="1"><p class="q">For a cyclic array that is slightly too big, what does more associativity (same size, LRU) do to misses?</p><ol class="opts"><li>Decreases them</li><li>Increases them</li><li>No change at all</li><li>Depends on stride</li></ol><div class="why"><p>More ways means more lines share each overflowing set, and LRU throws all of them out on every pass. Direct-mapped 5014 &lt; 8-way 18944 &lt; 16-way 34864.</p></div></div>
+
+<h2>7 · MESI pairings (R3.14)</h2>
+<div class="callout">
+  <span class="label">Rule</span>
+  <strong>Same address:</strong> M and E are exclusive, so they pair only with I. Valid pairs are I with anything, or S with S.<br>
+  <strong>Same slot or index only:</strong> the tags may differ, which makes them different lines, so any pair is possible.
+</div>
+<h3>7.1</h3>
+<div class="quiz" data-answer="3"><p class="q">Two MESI caches, same address. Which pair is <strong>impossible</strong>?</p><ol class="opts"><li>S and S</li><li>I and I</li><li>M and I</li><li>E and S</li></ol><div class="why"><p>E means the only copy, so another cache can't hold the line in S at the same time.</p></div></div>
+<h3>7.2</h3>
+<div class="quiz" data-answer="2"><p class="q">Two MESI caches, same address. Which pair is possible?</p><ol class="opts"><li>M and S</li><li>E and E</li><li>I and E</li><li>M and M</li></ol><div class="why"><p>I can pair with anything.</p></div></div>
+<h3>7.3</h3>
+<div class="quiz" data-answer="3"><p class="q">Two MESI caches, same index, with no statement about tags. Which pair is <strong>impossible</strong>?</p><ol class="opts"><li>M and M</li><li>E and S</li><li>M and E</li><li>None of them</li></ol><div class="why"><p>The tags may differ, which makes them different lines with unrelated states.</p></div></div>
+<h3>7.4</h3>
+<div class="quiz" data-answer="1"><p class="q">Three MESI caches, same address. Which combination is possible?</p><ol class="opts"><li>E, S, I</li><li>S, S, I</li><li>M, S, S</li><li>M, I, E</li></ol><div class="why"><p>Any number of S copies can exist, and I fits with anything. M or E would require every other cache to be I.</p></div></div>
+
+<h2>8 · MSI vs MESI transitions (R3.15)</h2>
+<div class="callout">
+  <span class="label">The differences</span>
+  Course MSI: M → <strong>I</strong> on a remote read. MESI: M → <strong>S</strong> (after a write-back).<br>
+  A read miss with no other copies gives S in MSI but E in MESI.<br>
+  Read hits never change state, a local write always ends in M, and a remote write always ends in I.
+</div>
+<h3>8.1</h3>
+<div class="quiz" data-answer="0"><p class="q">Course MSI. Core 1 holds a line in M, and Core 2 reads it. What is Core 1's new state?</p><ol class="opts"><li>I, after a write-back</li><li>S, after a write-back</li><li>S, with no write-back</li><li>M, with no change</li></ol><div class="why"><p>This is the course MSI diagram. Watch for it on the quiz.</p></div></div>
+<h3>8.2</h3>
+<div class="quiz" data-answer="1"><p class="q">MESI. Same situation: Core 1 holds the line in M, and Core 2 reads it. Core 1's new state?</p><ol class="opts"><li>I, after a write-back</li><li>S, after a write-back</li><li>S, with no write-back</li><li>E, with no write-back</li></ol><div class="why"><p>Both cores can now share the line, once the dirty data has been written back.</p></div></div>
+<h3>8.3</h3>
+<div class="quiz" data-answer="2"><p class="q">Core 1 holds a line in M. Which event leaves Core 1 in a <em>different</em> state under MSI than under MESI?</p><ol class="opts"><li>Core 1 read hit</li><li>Core 1 write hit</li><li>Core 2 reads line</li><li>Core 2 writes line</li></ol><div class="why"><p>MSI gives I and MESI gives S. Each of the others gives the same result in both protocols: M, M and I.</p></div></div>
+<h3>8.4</h3>
+<div class="quiz" data-answer="0"><p class="q">Core 1 holds a line in S. Which event leaves Core 1 in a different state under MSI than under MESI?</p><ol class="opts"><li>None of these</li><li>Core 1 write hit</li><li>Core 2 reads line</li><li>Core 2 writes line</li></ol><div class="why"><p>From S, both protocols do the same thing: a local write → M, a remote read → S, a remote write → I.</p></div></div>
+<h3>8.5</h3>
+<div class="quiz" data-answer="1"><p class="q">Core 1 reads a line that no other cache holds. What state does it get in MSI and in MESI?</p><ol class="opts"><li>S and S</li><li>S and E</li><li>E and E</li><li>M and E</li></ol><div class="why"><p>MSI has no E state. MESI marks the only clean copy as E.</p></div></div>
+<h3>8.6</h3>
+<div class="quiz" data-answer="2"><p class="q">MESI. Core 1 holds a line in E, and Core 2 writes it. What is Core 1's new state?</p><ol class="opts"><li>S, with no write-back</li><li>M, with no write-back</li><li>I, with no write-back</li><li>I, after a write-back</li></ol><div class="why"><p>A remote write always invalidates. E is clean, so there is nothing to write back.</p></div></div>
+<h3>8.7</h3>
+<div class="quiz" data-answer="0"><p class="q">MESI. Core 1 holds a line in S and writes it. What happens?</p><ol class="opts"><li>S → M, after broadcasting an invalidate</li><li>S → M, with no bus message</li><li>S → E, then E → M</li><li>It stays S and writes through</li></ol><div class="why"><p>Other cores might have copies, so they must be invalidated. Only E → M is silent.</p></div></div>
+
+<p class="ask">Tell me in the terminal which ones you missed. I'll build a last round on those before the quiz.</p>
+<nav class="lesson-nav">
+  <a href="0010-targeted-practice.html">← Targeted practice</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>
