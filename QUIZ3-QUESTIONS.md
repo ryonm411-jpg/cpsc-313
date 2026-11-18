@@ -1,8 +1,45 @@
 # Quiz 3: questions as remembered (for the retake)
 
-The student took Quiz 3 around 2026-11-06 and wrote these questions down from memory right afterwards. The wording and numbers are **not** official, and some details may be wrong or swapped between Q3 and Q5. The student expects most of the retake to use the same question types, and **all five are ones they struggled with**.
+The student took Quiz 3 around 2026-11-06. There are two sets of notes here:
 
-## Student's words (verbatim)
+1. **Quiz review notes (2026-11-18), the more accurate set.** The student opened the quiz viewing and took notes question by question. These use the **real question numbers** (Q3–Q10; Q1, Q2 and the questions after Q10 weren't recorded). The student says the retake will be mostly the same, with **one question harder and changed**.
+2. **First recall (2026-11-06)**, written from memory right after the quiz. This is less reliable, and its numbering doesn't match the quiz. Its worked sections are kept below because they still teach the methods.
+
+Practice for everything: [lessons/quiz3/0013-retake-replay.html](lessons/quiz3/0013-retake-replay.html). It has one section per real question number, a harder version of each, and random drills for Q6–Q10.
+
+---
+
+## Quiz review notes (2026-11-18): real question numbers
+
+### Student's words (verbatim, minus the pasted summaries)
+
+> Q3 -a) asks given a 64 byte cache line iterating over a array much larger what happens to miss rate if stride S doubles(answer should be stay the same b) if step size t triples and is greater than cache line what happens to miss rate(should = 1)
+> Q4 - given a list of terms asked which were a part of the memory hierarchy (remember one of the answers were flash drives)
+> Q5- which one of these miss handlings is beladys always more optimal than(answer should be none of the above)
+> Q6 - [random eviction, max misses] basically the opposite of beladies - replace the next up one and count the misses
+> Q7 - given a writeback/allocate and miss rate=..., time to access cache read/write=... , time to access memory = ... , average acess time = ... - find the rate of evictions being dirty evicts)
+> Q8 - [Amdahl] a) given meory speedup by 3.6 - and memory logic made non memory speedup by ... , 52% of instructions are memory - what is the speedup? - b) if old time was 132 what is the new time
+> Q9 - [2D loop] cache size 2048, 4 cache lines given code int sum = 0 double arr[16][16] - for i=0; i < 4; i++ for j=i j<4 j++ sum[i][j] a) - given arr[0][0] arr[0][1] ect - which are hits(i think that the answers were arr[0][1] and every other one starting from then b) instead of i<4, j<4 becomes <16 and iterates over second loop 122 times - give the number of hits and misses c) second loops j++ changed to +=2 - do miss/hits increase or decrease
+> Q10 - only remember a litte of the start given a 32 byte cache line - give the hexadecimal mask for the index bits and give the real index bits in binary - dont remember part b,c
+
+### How to solve each
+
+| Q | Topic | Method | Notes / traps |
+|---|---|---|---|
+| **Q3** | Stride vs. miss rate (64-byte lines, array ≫ cache) | S < L: miss rate = S/L. S ≥ L: miss rate = 1. | **(a) "Stays the same" is right only if S was already ≥ 64.** If S < 64, doubling S doubles the miss rate (up to 1). Check S's size first. **(b)** t > line, then tripled: still 1. |
+| **Q4** | Memory hierarchy members | Slides 3.1 list: registers → L1 → L2 → L3 → (L4, rare) → main memory → **solid-state (flash) drive** → disk drive. | Test: does it *store* data at a level? ALU, decoder and branch predictor are **not** levels. |
+| **Q5** | "Belady is always more optimal than…" | Belady is optimal (never more misses), but others can **tie** it. | So "always strictly better" fails for every policy: **none of the above**. A tie example: A B A B with 2 slots. |
+| **Q6** | Random eviction, max misses | Opposite of Belady: on each miss, evict the line needed **soonest**. | A repeat must hit if the cache isn't full yet or no miss happened since its last use. If distinct lines ≤ slots, max = min. See the Q1 worked section below. |
+| **Q7** | WB/WA: find the dirty fraction p from the average T | T = c + m·d·(1 + p), so **p = (T − c)/(m·d) − 1** | Hit c, clean miss c + d, dirty miss c + 2d. Example: c = 2, d = 50, m = 0.1, T = 9.5 gives p = 0.5. If p < 0 or > 1, recheck. A harder version may solve for m or T instead. |
+| **Q8** | Amdahl, two parts | fraction = 0.52/3.6 + 0.48/s₂; speedup = 1/fraction; new = old × fraction | With s₂ = 1.4: 0.48730 gives **2.0521×**, and **132 s → 64.32 s**. If non-memory gets *slower*, s₂ < 1 (e.g. 0.9 gives 89.47 s). "% of instructions" = % of time unless per-instruction times are given. |
+| **Q9** | Triangle loop `j = i` over `double arr[16][16]` | Elements per line E; element 16i + j is in line ⌊(16i + j)/E⌋; first touch misses. | The note "arr[0][1] then every other one hits" matches **E = 2**. 4×4 triangle: E = 2 gives 4 hits, 6 misses; E = 4 gives 6 hits, 4 misses. 16×16 triangle (136 accesses): E = 2 gives 72 misses, 64 hits; E = 4 gives 40 misses, 96 hits. **(c) `j += 2`: misses stay the same, hits drop** (the same lines are touched), so the miss rate rises. "122 times" doesn't match any loop I can reconstruct (136 or 58); count it yourself on the retake. |
+| **Q10** | Index mask in hex, index in binary (32-byte lines) | b = 5; mask = (sets − 1) << 5; index = (addr & mask) >> 5 in exactly s bits | 8 KB direct-mapped: 256 sets, mask **0x1FE0**; 2-way: **0xFE0**; fully associative: **0**. 0x1F is the *offset* mask. Example: 0x0040B7C4 has index 1011 1110 (DM) or 011 1110 (2-way). |
+
+---
+
+## First recall (2026-11-06)
+
+### Student's words (verbatim)
 
 > Q1 - gave 4 slots and a set of Lines like A, H, G ... and asked for the maximum number of misses if evicted lines were selected at random and somehow gave the most misses possible
 >
@@ -16,7 +53,7 @@ The student took Quiz 3 around 2026-11-06 and wrote these questions down from me
 
 ---
 
-## Q1 · Random eviction: maximum possible misses
+### Recall Q1 (= quiz Q6) · Random eviction: maximum possible misses
 
 **Question:** A fully associative cache with 4 slots gets a sequence of lines (A, H, G, …). Eviction is random. What is the **maximum** number of misses the random choice could produce?
 
@@ -47,7 +84,7 @@ The student took Quiz 3 around 2026-11-06 and wrote these questions down from me
 
 ---
 
-## Q2 · Which line does each policy evict?
+### Recall Q2 (probably quiz Q1 or Q2) · Which line does each policy evict?
 
 **Question:** 3 slots hold H, E, G. You're given the access history, then a new line **Q** arrives and misses. Which line is evicted under LRU, MRU, FIFO ("FAFA" is probably FIFO), LFU, and maybe Belady/OPT?
 
@@ -79,7 +116,7 @@ Practice: [lessons/quiz3/0003-replacement-policies.html](lessons/quiz3/0003-repl
 
 ---
 
-## Q3 · 2D array loop: hit or miss for each element
+### Recall Q3 (= quiz Q9 / Q3) · 2D array loop: hit or miss for each element
 
 **Question (reconstructed):** cache 2048 bytes, direct-mapped, a line holds 4 elements, `double a[16][16]` (8 bytes each, so 2048 bytes in total). Assume the array starts at the beginning of a line (line-aligned).
 
@@ -116,7 +153,7 @@ Which of a[0][0], a[0][1], … hit or miss? Then they change the loop to `k < 16
 
 ---
 
-## Q4 · Amdahl with two parts that both speed up
+### Recall Q4 (= quiz Q8) · Amdahl with two parts that both speed up
 
 **Question:** 52% of the time is in memory, and memory gets 3.6× faster. The other 48% gets 1.4× faster. What's the overall speedup? And if the old time was 300 s, what's the new time?
 
@@ -142,7 +179,7 @@ Practice: [lessons/quiz3/0004-amdahl-and-multilevel.html](lessons/quiz3/0004-amd
 
 ---
 
-## Q5 · Address bits: offset, index (in hex), tag
+### Recall Q5 (= quiz Q10) · Address bits: offset, index (in hex), tag
 
 **Question (reconstructed):** given a cache size and a line size (and maybe an address), give the offset bits and the index (in hex), then redo it for 16-way and fully associative. What changes? What changes if the stride increases?
 

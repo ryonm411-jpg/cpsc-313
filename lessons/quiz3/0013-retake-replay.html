@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 3 Retake Replay</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 retake · Lesson 13</div>
+  <h1>Retake Replay</h1>
+  <p class="subtitle">Your notes from viewing the quiz, question by question, with one method each and harder versions too.</p>
+</header>
+
+<p><strong>Your win for today:</strong> answer every question type from the quiz review, plus a harder version of each, because one retake question will be harder. About 40 minutes. Do one section, close the page, then come back to the next section tomorrow from memory.</p>
+<div class="callout">
+  <span class="label">How to use this</span>
+  Paper and a calculator. Write your reasoning first, then check. Each numbered section matches the question number on the quiz. The full written notes are in <a href="../../QUIZ3-QUESTIONS.md">QUIZ3-QUESTIONS.md</a>.
+</div>
+
+<!-- ============================================ Q3 -->
+<h2>Q3 · Stride and miss rate</h2>
+<p>You walk through an array that is <em>much bigger than the cache</em>, so nothing is reused and every line is touched once. With line size L and stride S:</p>
+<div class="callout key">
+  <span class="label">Three cases</span>
+  <strong>S &lt; L:</strong> each line takes L/S accesses and misses once, so the miss rate is <strong>S/L</strong>.<br>
+  <strong>S ≥ L:</strong> every access lands in a new line, so the miss rate is <strong>1</strong>.<br>
+  So changing S only changes the miss rate while S is still below L. Once S ≥ L, making it bigger leaves it at 1.
+</div>
+<div class="callout">
+  <span class="label">Check your memory of Q3a</span>
+  You remember the answer to “S doubles” as <em>stays the same</em>. That's right only if S was <strong>already ≥ 64</strong>. If S was, say, 8, doubling it <strong>doubles</strong> the miss rate (1/8 → 1/4). On the retake, look for the size of S before you answer. <span class="cite">Slides 3.6</span>
+</div>
+<div class="quiz" data-answer="0"><p class="q">Q3·1. 64-byte lines, huge array, stride 8 bytes. The stride doubles. The miss rate…</p><ol class="opts"><li>doubles, 1/8 to 1/4</li><li>stays the same at 1/8</li><li>halves, 1/8 to 1/16</li><li>becomes exactly one</li></ol><div class="why"><p>S/L: 8/64 → 16/64. Twice as few accesses per line, and still one miss per line.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Q3·2. 64-byte lines, huge array, stride 64 bytes. The stride doubles. The miss rate…</p><ol class="opts"><li>doubles, 1 to 2</li><li>stays the same at 1</li><li>halves, 1 to 1/2</li><li>drops below one half</li></ol><div class="why"><p>Every access already misses. A rate can't go above 1.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">Q3·3. 64-byte lines, huge array, stride t &gt; 64. The stride triples. The miss rate…</p><ol class="opts"><li>triples from its old value</li><li>drops to a third of it</li><li>rises but stays under one</li><li>stays the same at one</li></ol><div class="why"><p>t &gt; L means every access is already a new line.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Q3·4 (harder). 64-byte lines, huge array, stride 40 bytes. The stride doubles to 80. The miss rate…</p><ol class="opts"><li>doubles from 0.625 to 1.25</li><li>stays the same at 0.625</li><li>rises from about 0.63 to 1</li><li>halves to about 0.31</li></ol><div class="why"><p>40 &lt; 64, so the rate is about 40/64 ≈ 0.63. 80 ≥ 64, so every access misses: 1. It can't double past 1.</p></div></div>
+<div class="quiz numeric" data-answer="0.0625" data-tol="0.0001"><p class="q">Q3·5. 64-byte lines, huge <code>int</code> array (4 bytes), every element read once. Miss rate? (4 decimals)</p><div class="why"><p>S/L = 4/64 = 0.0625.</p></div></div>
+
+<!-- ============================================ Q4 -->
+<h2>Q4 · What's in the memory hierarchy?</h2>
+<p>The course's list, from fastest and smallest to slowest and biggest <span class="cite">Slides 3.1, slide 8</span>:</p>
+<p><strong>Registers → L1 cache → L2 cache → L3 cache → (L4 cache, rare) → Main memory → Solid-state (flash) drive → Disk drive</strong></p>
+<p>Each level acts as a cache for the level below it. The test: <em>does it <strong>store</strong> data?</em> Parts that compute or control (ALU, decoder, branch predictor) aren't levels.</p>
+<div class="quiz" data-answer="0,2,3,5"><p class="q">Q4·1. Select <strong>every</strong> item that is part of the memory hierarchy.</p><ol class="opts"><li>Registers</li><li>The ALU</li><li>Flash drive</li><li>Main memory</li><li>Branch predictor</li><li>Disk drive</li></ol><div class="why"><p>Registers, flash (SSD), main memory and disk all store data at a level. The ALU computes; the branch predictor guesses jumps.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Q4·2. Which pair is in the right order, faster level first?</p><ol class="opts"><li>Flash drive, then L3</li><li>L2 cache, then DRAM</li><li>Disk drive, then flash</li><li>Main memory, then L1</li></ol><div class="why"><p>Going down the list means bigger, cheaper per byte and slower.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">Q4·3. Going <em>down</em> the hierarchy, each level gets…</p><ol class="opts"><li>smaller, faster, pricier</li><li>bigger, faster, cheaper</li><li>smaller, slower, cheaper</li><li>bigger, slower, cheaper</li></ol><div class="why"><p>Cost per byte drops and size grows as you move away from the CPU. <span class="cite">Slides 3.1, size/latency/price slides</span></p></div></div>
+
+<!-- ============================================ Q5 -->
+<h2>Q5 · Is Belady <em>always</em> better?</h2>
+<div class="callout key">
+  <span class="label">Optimal ≠ always strictly better</span>
+  Belady (evict the line used furthest in the future) is <strong>optimal</strong>: no policy ever gets <em>fewer</em> misses. But other policies can <strong>tie</strong> it, for example when everything fits in the cache, or when LRU happens to make the same choices. So “Belady is <em>always more optimal</em> than X” is false for every X, which makes the answer <strong>none of the above</strong>. <span class="cite">Slides 3.3, slides 12–14</span>
+</div>
+<div class="quiz" data-answer="3"><p class="q">Q5·1. Belady's algorithm is <em>always strictly better</em> (fewer misses) than which policy?</p><ol class="opts"><li>LRU</li><li>LFU</li><li>Random</li><li>None of the above</li></ol><div class="why"><p>Any of them can tie Belady on some sequence. Try A, B, A, B with 2 slots: every policy gets 2 misses.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Q5·2. Which statement about Belady is true?</p><ol class="opts"><li>It never has more misses than any policy</li><li>It always has fewer misses than LRU does</li><li>It can be built into real hardware caches</li><li>It evicts the line used furthest in the past</li></ol><div class="why"><p>It needs the future, so it can't be built. It's the yardstick. “Furthest in the past” is LRU.</p></div></div>
+<div class="quiz numeric" data-answer="4"><p class="q">Q5·3. 4 slots, sequence A B C D A B C D. How many misses does LRU get? (Belady gets 4.)</p><div class="why"><p>4 lines fit in 4 slots, so only cold misses: 4. A tie, which is why “always better” fails.</p></div></div>
+
+<!-- ============================================ Q6 -->
+<h2>Q6 · Random eviction: maximum misses</h2>
+<div class="callout key">
+  <span class="label">The opposite of Belady</span>
+  For the <em>maximum</em>, assume the worst luck: on every miss, evict the line that's <strong>needed soonest</strong>. Then count.<br>
+  A repeat is a <strong>guaranteed hit</strong> when (a) the cache wasn't full yet, or (b) no miss happened since that line was last used.<br>
+  If the number of distinct lines ≤ slots, nothing is ever evicted, so the maximum equals the minimum.
+</div>
+<p>Worked: 3 slots, <code>A B C A D A B C D</code>.</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Access</th><th>A</th><th>B</th><th>C</th><th>A</th><th>D</th><th>A</th><th>B</th><th>C</th><th>D</th></tr>
+<tr><td>Result</td><td>M</td><td>M</td><td>M</td><td>hit</td><td>M</td><td>M</td><td>M</td><td>M</td><td>M</td></tr>
+<tr><td>Evict</td><td></td><td></td><td></td><td></td><td>A</td><td>B</td><td>C</td><td>D</td><td></td></tr>
+</table></div>
+<p>A at position 4 must hit: the cache had just filled up and nothing missed in between. Maximum = <strong>8</strong>. Belady gets 5.</p>
+<div class="quiz numeric" data-answer="4"><p class="q">Q6·1. Same sequence, but <strong>4</strong> slots. Maximum misses?</p><div class="why"><p>Only 4 distinct lines, so they all fit and nothing gets evicted: 4.</p></div></div>
+<div class="quiz numeric" data-answer="7"><p class="q">Q6·2. 4 slots, <code>A B A C D B A E B A</code>. Maximum misses with random eviction?</p><div class="why"><p>A B (A hits) C D: 4 misses, and the cache is full. B, then A: both hit, because no miss happened since. E misses and evicts B (needed next). B misses and evicts A. A misses. 4 + 3 = 7.</p></div></div>
+<div class="quiz numeric" data-answer="5"><p class="q">Q6·3 (harder). Same sequence and slots. Minimum misses (Belady)?</p><div class="why"><p>E evicts C or D (never used again). B and A then hit. 5.</p></div></div>
+<p><strong>Drill.</strong> It asks for compulsory, maximum (random) and minimum (Belady), because a harder version might ask for more than one.</p>
+<div id="d6"></div>
+
+<!-- ============================================ Q7 -->
+<h2>Q7 · Working backwards to the dirty rate</h2>
+<p>Write-back, write-allocate, with cache time c, memory time d, miss rate m, and a fraction p of evictions that are dirty. Count the trips (<a href="0012-round-two.html">Lesson 12</a>): hit = c, clean miss = c + d, dirty miss = c + 2d.</p>
+<div class="callout key">
+  <span class="label">Build it, then solve for p</span>
+  T = (1 − m)·c + m·[(1 − p)(c + d) + p(c + 2d)]<br>
+  &nbsp;&nbsp;= c + m·d·(1 + p)<br>
+  so <strong>p = (T − c) / (m·d) − 1</strong>
+</div>
+<p>Worked: c = 2, d = 50, m = 0.1, T = 9.5. (9.5 − 2) / (0.1 × 50) − 1 = 7.5/5 − 1 = <strong>0.5</strong>.</p>
+<p>Sanity check: if p is negative or bigger than 1, you've made a mistake. The usual one is forgetting that c is paid on misses too.</p>
+<div class="quiz numeric" data-answer="0.2" data-tol="0.005"><p class="q">Q7·1. c = 1, d = 100, m = 0.05, T = 7. Dirty fraction?</p><div class="why"><p>(7 − 1) / 5 − 1 = 1.2 − 1 = 0.2.</p></div></div>
+<div class="quiz numeric" data-answer="0.75" data-tol="0.005"><p class="q">Q7·2. c = 4, d = 40, m = 0.2, T = 18. Dirty fraction?</p><div class="why"><p>(18 − 4) / 8 − 1 = 1.75 − 1 = 0.75.</p></div></div>
+<div class="quiz numeric" data-answer="0.08" data-tol="0.0005"><p class="q">Q7·3 (harder, solve for m). c = 2, d = 50, 25% of evictions dirty, T = 7. Miss rate?</p><div class="why"><p>T = c + m·d·(1 + p): 7 = 2 + m × 50 × 1.25 = 2 + 62.5m, so m = 5/62.5 = 0.08.</p></div></div>
+<div id="d7"></div>
+
+<!-- ============================================ Q8 -->
+<h2>Q8 · Amdahl, two parts</h2>
+<div class="callout key">
+  <span class="label">One formula</span>
+  new-time fraction = f/s₁ + (1 − f)/s₂ &nbsp;·&nbsp; speedup = 1 / that &nbsp;·&nbsp; new time = old × that<br>
+  If a change makes a part <em>slower</em>, its s is <strong>less than 1</strong> (for example 0.9), and the same formula still works. <span class="cite">Amdahl reference sheet</span>
+</div>
+<p>From your notes: f = 0.52 memory at 3.6×; if the rest is 1.4× (from your first recall), then 0.52/3.6 + 0.48/1.4 = 0.48730.</p>
+<div class="quiz numeric" data-answer="2.0521" data-tol="0.0006"><p class="q">Q8·1. Speedup? (4 decimals)</p><div class="why"><p>1 / 0.48730 = 2.0521.</p></div></div>
+<div class="quiz numeric" data-answer="64.32" data-tol="0.006"><p class="q">Q8·2. The old time was 132 s. New time? (2 decimals)</p><div class="why"><p>132 × 0.48730 = 64.32 s. Or 132 / 2.0521.</p></div></div>
+<div class="quiz numeric" data-answer="89.47" data-tol="0.006"><p class="q">Q8·3 (harder). Same, but the memory change makes non-memory work <strong>slower</strong>: 0.9× its old speed. New time for 132 s? (2 decimals)</p><div class="why"><p>0.52/3.6 + 0.48/0.9 = 0.14444 + 0.53333 = 0.67778. 132 × 0.67778 = 89.47 s. The speedup is only 1.4754.</p></div></div>
+<div class="callout"><span class="label">“52% of instructions”</span>
+Amdahl needs the fraction of <strong>time</strong>. If the question says <em>instructions</em> and gives no per-instruction times, treat them as equal and use 0.52. If it gives times (for example, memory instructions take 3 cycles and others take 1), turn them into a time fraction first: 0.52×3 / (0.52×3 + 0.48×1).</div>
+<div id="d8"></div>
+
+<!-- ============================================ Q9 -->
+<h2>Q9 · The triangle loop</h2>
+<pre><code>int sum = 0;  double arr[16][16];      // 2048 bytes = the whole cache
+for (i = 0; i &lt; 4; i++)
+    for (j = i; j &lt; 4; j++)
+        sum += arr[i][j];</code></pre>
+<ol class="steps">
+<li><strong>Elements per line</strong> E = line bytes ÷ element bytes. Your note “arr[0][1] and then every other one hits” fits <strong>E = 2</strong> (16-byte lines with doubles).</li>
+<li>arr[i][j] is element 16·i + j, in line ⌊(16·i + j) / E⌋. The first touch of a line misses; later touches hit.</li>
+<li><strong>Watch where each row starts.</strong> j starts at i, so row 1 starts at arr[1][1], which is in the <em>second half</em> of a line when E = 2. It's still a miss, because arr[1][0] was never loaded.</li>
+<li>The array fits in the cache (2048 = 2048), so there are no conflicts; every miss is a cold miss. <code>sum</code> is in a register.</li>
+</ol>
+<div class="table-scroll"><table class="data">
+<tr><th>E = 2</th><th>j = 0</th><th>j = 1</th><th>j = 2</th><th>j = 3</th></tr>
+<tr><td>i = 0</td><td>M</td><td>hit</td><td>M</td><td>hit</td></tr>
+<tr><td>i = 1</td><td>—</td><td>M</td><td>M</td><td>hit</td></tr>
+<tr><td>i = 2</td><td>—</td><td>—</td><td>M</td><td>hit</td></tr>
+<tr><td>i = 3</td><td>—</td><td>—</td><td>—</td><td>M</td></tr>
+</table></div>
+<p>E = 2: 4 hits, 6 misses. If the lines hold 4 elements (E = 4), each row's first access misses and the rest hit: 6 hits, 4 misses.</p>
+<div class="quiz" data-answer="2"><p class="q">Q9·1. E = 2. Is arr[1][2] a hit or a miss?</p><ol class="opts"><li>Hit; row 1 was loaded</li><li>Hit; arr[1][1] loaded it</li><li>Miss; it's a new line</li><li>Not accessed by the loop</li></ol><div class="why"><p>arr[1][1] is element 17, in line 8 with element 16. arr[1][2] is element 18, in line 9. New line, so it misses.</p></div></div>
+<div class="quiz numeric" data-answer="72"><p class="q">Q9·2. E = 2, but now <code>i &lt; 16</code> and <code>j &lt; 16</code> (j still starts at i): 136 accesses. Misses?</p><div class="why"><p>Row i touches lines ⌊i/2⌋ to 7 of that row: 8 − ⌊i/2⌋ lines. The sum over i = 0…15 is 2 × (8+7+…+1) = 72. Hits = 136 − 72 = 64.</p></div></div>
+<div class="quiz numeric" data-answer="40"><p class="q">Q9·3. Same as Q9·2 but E = 4. Misses?</p><div class="why"><p>Row i touches 4 − ⌊i/4⌋ lines. The sum is 4 × (4+3+2+1) = 40. Hits = 96.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Q9·4. Change <code>j++</code> to <code>j += 2</code>. Compared to j++, the misses and the hits…</p><ol class="opts"><li>misses rise, hits stay</li><li>misses stay, hits drop</li><li>both of them go down</li><li>both of them go up</li></ol><div class="why"><p>A stride of 2 elements is still ≤ one line, so the <em>same lines</em> get touched: same misses (E = 2: 72; E = 4: 40). There are fewer accesses per line, so fewer hits (E = 2: 0; E = 4: 32). The miss <em>rate</em> rises.</p></div></div>
+<div class="callout"><span class="label">About your “122 times”</span>
+A full 16×16 triangle (j from i) runs 136 times. With i &lt; 4 and j &lt; 16, it runs 58 times. 122 doesn't match either, so on the retake, count it yourself: Σ (row length − starting j), divided by the step.</div>
+<p><strong>Drill: random loops, line sizes and steps.</strong> The answer shows every hit and miss.</p>
+<div id="d9"></div>
+
+<!-- ============================================ Q10 -->
+<h2>Q10 · The index mask in hex</h2>
+<div class="callout key">
+  <span class="label">Recipe</span>
+  offset bits b = log₂(line). Index bits s = log₂(sets).<br>
+  <strong>mask = (sets − 1) &lt;&lt; b</strong>: s ones sitting above b zeros. Write it in binary, then group in 4s from the right to get hex.<br>
+  <strong>index = (address &amp; mask) &gt;&gt; b</strong>, written with exactly s bits.
+</div>
+<p>Worked: 32-byte lines (b = 5), 8 KB direct-mapped → 256 sets (s = 8). Mask = 1111 1111 followed by 00000 = <code>1 1111 1110 0000</code> = <strong>0x1FE0</strong>.<br>
+Address 0x0040B7C4: the low bits are …1011 0111 1100 0100. Drop the 5 offset bits (00100) and keep the next 8: <strong>1011 1110</strong> (0xBE).</p>
+<div class="quiz" data-answer="0"><p class="q">Q10·1. Same cache made <strong>2-way</strong> (128 sets). Index mask?</p><ol class="opts"><li>0xFE0</li><li>0x1FE0</li><li>0x7F0</li><li>0xFF0</li></ol><div class="why"><p>7 ones above 5 zeros: 1111 1110 0000 = 0xFE0. The index loses its top bit to the tag.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Q10·2. 2-way: the index of 0x0040B7C4 in binary?</p><ol class="opts"><li>1011 1110</li><li>101 1111</li><li>011 1110</li><li>111 1100</li></ol><div class="why"><p>The same bits as before, minus the top one: 0111110.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">Q10·3. Fully associative, 32-byte lines. Index mask?</p><ol class="opts"><li>0x1F</li><li>0xFE0</li><li>0xFFFFFFE0</li><li>0x0 (no index)</li></ol><div class="why"><p>One set means no index bits. 0x1F is the <em>offset</em> mask, a common mix-up.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Q10·4. 32-byte lines. Which mask picks out the offset?</p><ol class="opts"><li>0x20</li><li>0x1F</li><li>0x3F</li><li>0x10</li></ol><div class="why"><p>Offset = the low 5 bits = 11111 = 0x1F.</p></div></div>
+<p><strong>Drill.</strong> Type hex as <code>0x…</code> and binary with or without leading zeros.</p>
+<div id="d10"></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.1 (hierarchy), 3.2 (bits), 3.3 (Belady, random), 3.5 (write-back), 3.6 (stride, 2D arrays), and the Amdahl reference sheet.
+</div>
+<p class="ask">Tell me in the terminal which ones you missed and what you wrote. If the retake brings back a question with different wording, write it down afterwards so I can add it here.</p>
+<nav class="lesson-nav">
+  <a href="0012-round-two.html">← Round two</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/retake.js"></script>
+<script>
+  Retake.worst(document.getElementById('d6'));
+  Retake.dirty(document.getElementById('d7'));
+  Retake.amdahl(document.getElementById('d8'));
+  Retake.loop(document.getElementById('d9'));
+  Retake.mask(document.getElementById('d10'));
+</script>
+</body>
+</html>
