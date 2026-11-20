@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 3 Remaining Questions</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 retake · Lesson 14</div>
+  <h1>The Rest of the Quiz</h1>
+  <p class="subtitle">Q1, Q2, the parts of Q10 you didn't record, and everything after Q10.</p>
+</header>
+
+<div class="callout">
+  <span class="label">What's a guess here</span>
+  Your quiz-viewing notes start at Q3 and stop partway through Q10. So this page covers the <strong>most likely</strong> candidates:<br>
+  <strong>Q1/Q2:</strong> the “H, E, G in 3 slots, then Q: which line does each policy evict?” question from your first recall. It wasn't in your Q3–Q10 notes, so it's almost certainly one of these.<br>
+  <strong>Q10 b, c:</strong> the same cache made 16-way and fully associative (from your first recall of this question).<br>
+  <strong>Q11 onward:</strong> the quiz topics that Q3–Q10 didn't touch: write latencies, multi-level caches, conflict misses, MESI, Flynn and locality.<br>
+  If you can open the quiz viewing again, note Q1, Q2 and Q11 onward, and I'll replace the guesses with the real questions.
+</div>
+
+<!-- ============================================ Q1/Q2 -->
+<h2>Q1 / Q2 · Which line gets evicted?</h2>
+<p>Before you look at any policy, write <strong>one row per line in the cache</strong>. Every policy reads its answer off this table. <span class="cite">Slides 3.3</span></p>
+<div class="table-scroll"><table class="data">
+<tr><th>Policy</th><th>Evicts the line with…</th><th>Column it reads</th></tr>
+<tr><td><strong>LRU</strong></td><td>the oldest last use</td><td>last used (smallest)</td></tr>
+<tr><td><strong>MRU</strong></td><td>the newest last use</td><td>last used (largest)</td></tr>
+<tr><td><strong>FIFO</strong></td><td>the earliest load; reuse doesn't count</td><td>loaded at (smallest)</td></tr>
+<tr><td><strong>LFU</strong></td><td>the fewest uses since it was loaded</td><td>count (smallest), ties to LRU</td></tr>
+<tr><td><strong>Belady</strong></td><td>the furthest next use (or never used again)</td><td>the accesses <em>after</em> Q</td></tr>
+</table></div>
+<p><strong>Worked (easy):</strong> the cache holds H, E, G (loaded at times 0, 1, 2). Then <code>E H E E</code>, then Q. Afterwards: <code>G E H W</code>.</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Line</th><th>Loaded</th><th>Last used</th><th>Count</th><th>Next use after Q</th></tr>
+<tr><td>H</td><td>0</td><td>4</td><td>2</td><td>3rd</td></tr>
+<tr><td>E</td><td>1</td><td>6</td><td>4</td><td>2nd</td></tr>
+<tr><td>G</td><td>2</td><td>2</td><td>1</td><td>1st</td></tr>
+</table></div>
+<p>LRU → <strong>G</strong> · MRU → <strong>E</strong> · FIFO → <strong>H</strong> · LFU → <strong>G</strong> · Belady → <strong>H</strong></p>
+
+<div class="callout key">
+  <span class="label">The harder version: a new line arrives before Q</span>
+  If the history brings in a line that isn't in the cache (call it W), there's an eviction <strong>before</strong> Q. Each policy evicts something different, so <strong>by the time Q comes, each policy has a different cache</strong>. Trace each policy separately from the start. Don't reuse one table for all of them.<br>
+  LFU detail: a line that gets evicted and comes back starts at count 1 again.
+</div>
+<p><strong>Worked (hard):</strong> H, E, G loaded at 0, 1, 2. Then <code>E G E W H</code> (times 3–7), then Q. Afterwards: <code>G E H W</code>.</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Policy</th><th>At W (time 6)</th><th>At H (time 7)</th><th>Cache when Q arrives</th><th>Evicts for Q</th></tr>
+<tr><td>LRU</td><td>evict H (last 0)</td><td>miss, evict G (last 4)</td><td>E, W, H</td><td><strong>E</strong></td></tr>
+<tr><td>MRU</td><td>evict E (last 5)</td><td>hit</td><td>H, G, W</td><td><strong>H</strong> (just used)</td></tr>
+<tr><td>FIFO</td><td>evict H (loaded 0)</td><td>miss, evict E (loaded 1)</td><td>G, W, H</td><td><strong>G</strong></td></tr>
+<tr><td>LFU</td><td>evict H (count 1)</td><td>miss, evict W (count 1)</td><td>E(3), G(2), H(1)</td><td><strong>H</strong></td></tr>
+<tr><td>Belady</td><td>evict E (next use furthest)</td><td>hit</td><td>H, G, W</td><td><strong>W</strong> (used last)</td></tr>
+</table></div>
+
+<h3>Your turn</h3>
+<p>H, E, G loaded at 0, 1, 2. History <code>G H G E G</code> (times 3–7), then Q. Afterwards: <code>E H W G</code>.</p>
+<div class="quiz" data-answer="1"><p class="q">Q2·1. LRU evicts…</p><ol class="opts"><li>G</li><li>H</li><li>E</li><li>Q</li></ol><div class="why"><p>Last uses: H 4, E 6, G 7. The oldest is H.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Q2·2. MRU evicts…</p><ol class="opts"><li>G</li><li>H</li><li>E</li><li>Q</li></ol><div class="why"><p>G was used last, at time 7.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Q2·3. FIFO evicts…</p><ol class="opts"><li>G</li><li>H</li><li>E</li><li>Q</li></ol><div class="why"><p>H was loaded first (time 0). Being reused at time 4 doesn't matter to FIFO.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Q2·4. LFU evicts… (ties go to LRU)</p><ol class="opts"><li>G</li><li>H</li><li>E</li><li>Q</li></ol><div class="why"><p>Counts: H 2, E 2, G 4 (count the first load too). H and E tie, so LRU breaks it: H (last used at 4) is older than E (last used at 6). If the quiz states a different tie rule, use that one.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Q2·5. Belady evicts… (afterwards: E H W G)</p><ol class="opts"><li>G</li><li>H</li><li>E</li><li>Q</li></ol><div class="why"><p>Next uses: E 1st, H 2nd, G 4th. G is needed furthest away.</p></div></div>
+<p><strong>Drill.</strong> Type a letter for each policy. Half the problems are the harder kind, where W shows up before Q.</p>
+<div id="dEv"></div>
+<p><strong>Drill: count hits under one policy.</strong> Click each access that hits.</p>
+<div id="dTr"></div>
+
+<!-- ============================================ Q10 b, c -->
+<h2>Q10 b, c · Same cache, more ways</h2>
+<div class="callout key">
+  <span class="label">What moves when the ways change</span>
+  Keep the size and line size the same. Doubling the ways halves the sets, so <strong>one bit moves from the index to the tag</strong>. The offset never changes.<br>
+  Direct-mapped → 16-way: <strong>4</strong> bits move. Fully associative: <strong>all</strong> index bits move, so the index is 0 bits and the mask is 0.<br>
+  A stride change doesn't move any bits. It changes the hit rate only.
+</div>
+<p>32-byte lines, 8 KB, 32-bit addresses:</p>
+<div class="table-scroll"><table class="data">
+<tr><th></th><th>Sets</th><th>Offset</th><th>Index</th><th>Tag</th><th>Index mask</th></tr>
+<tr><td>Direct-mapped</td><td>256</td><td>5</td><td>8</td><td>19</td><td>0x1FE0</td></tr>
+<tr><td>2-way</td><td>128</td><td>5</td><td>7</td><td>20</td><td>0xFE0</td></tr>
+<tr><td>16-way</td><td>16</td><td>5</td><td>4</td><td>23</td><td>0x1E0</td></tr>
+<tr><td>Fully associative</td><td>1</td><td>5</td><td>0</td><td>27</td><td>0</td></tr>
+</table></div>
+<div class="quiz numeric" data-answer="23"><p class="q">Q10·b. 8 KB, 32-byte lines, 32-bit addresses, 16-way. Tag bits?</p><div class="why"><p>256 lines ÷ 16 = 16 sets → 4 index bits. 32 − 4 − 5 = 23.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">Q10·c. Same cache, 16-way. Index mask?</p><ol class="opts"><li>0x1FE0</li><li>0x0F0</li><li>0x1E0</li><li>0x01F</li></ol><div class="why"><p>4 ones above 5 zeros: 1 1110 0000 = 0x1E0.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">Q10·d. Going from direct-mapped to fully associative, which field keeps its size?</p><ol class="opts"><li>The tag</li><li>The index</li><li>All of them</li><li>The offset</li></ol><div class="why"><p>The offset depends only on the line size.</p></div></div>
+<p><strong>Drill: bits from the parameters.</strong></p>
+<div id="dPa"></div>
+<p><strong>Drill: split an address.</strong></p>
+<div id="dSp"></div>
+
+<!-- ============================================ Q11+ -->
+<h2>Q11 onward · Mixed review</h2>
+<p>These are mixed on purpose, the way the quiz mixes them. For each one, decide <em>which kind</em> of question it is before you start calculating. Each links back to its lesson.</p>
+
+<div class="quiz numeric" data-answer="121"><p class="q">R·1. Write-back, write-allocate, c = 1, d = 60. A write miss that evicts a <strong>dirty</strong> line?</p><div class="why"><p>Write back + fetch + cache write: 60 + 60 + 1 = 121. <a href="0012-round-two.html">Lesson 12 §A</a></p></div></div>
+<div class="quiz numeric" data-answer="5.8" data-tol="0.005"><p class="q">R·2. L1 hit 1; L1↔L2 transfer 8; L2↔memory transfer 40; all clean. 70% of accesses hit L1; 80% of L1 misses hit L2. Average in ns?</p><div class="why"><p>L2 hit = 8 + 1 = 9. L2 miss = 40 + 8 + 1 = 49. 0.7×1 + 0.3×(0.8×9 + 0.2×49) = 0.7 + 0.3×17 = 5.8. Remember: every path ends with the L1 hit. <a href="0004-amdahl-and-multilevel.html">Lesson 4</a></p></div></div>
+<div class="quiz" data-answer="1"><p class="q">R·3. Course MSI. This cache holds a line in M; another core reads it. New state?</p><ol class="opts"><li>S, after a write-back</li><li>I, after a write-back</li><li>S, with no write-back</li><li>M, with no change</li></ol><div class="why"><p>The course's MSI diagram: a remote R/W takes M to I. (MESI would give S.) <a href="0007-msi-and-mesi.html">Lesson 7</a></p></div></div>
+<div class="quiz numeric" data-answer="120"><p class="q">R·4. Write-through, write-allocate, d = 60. A write miss?</p><div class="why"><p>Fetch + write to the source, with the cache write hidden: 2d = 120. No dirty lines under write-through.</p></div></div>
+<div class="quiz numeric" data-answer="190"><p class="q">R·5. 8 sets, 2-way, 32-byte lines, LRU. A line-aligned array of 19 lines is read with stride 32, 20 times. Total misses?</p><div class="why"><p>The cache holds 16 lines, so there are 3 extras in sets 0–2. Those sets hold 3 lines in 2 ways: 9 lines × 20 = 180. Sets 3–7: 10 lines, once each. 190. <a href="0012-round-two.html">Lesson 12 §E</a></p></div></div>
+<div class="quiz" data-answer="2"><p class="q">R·6. MESI. A core holds a line in E and writes it. What goes on the bus?</p><ol class="opts"><li>An invalidate message</li><li>A write to memory</li><li>Nothing at all</li><li>A read request</li></ol><div class="why"><p>E means nobody else has it, so E → M is silent. This is MESI's whole advantage over MSI.</p></div></div>
+<div class="quiz numeric" data-answer="0.8" data-tol="0.005"><p class="q">R·7. Write-back/allocate: hit 2, clean miss 52. Write-through/no-allocate: every write 12. Break-even hit rate?</p><div class="why"><p>2h + 52(1 − h) = 12, so 50h = 40 and h = 0.8.</p></div></div>
+<div class="quiz numeric" data-answer="8"><p class="q">R·8. 64 KB, 4-way, 64-byte lines. Index bits?</p><div class="why"><p>65536 ÷ 64 = 1024 lines; ÷ 4 = 256 sets; log₂ = 8.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">R·9. A GPU runs the same instruction on thousands of pixels. Flynn class?</p><ol class="opts"><li>SISD</li><li>SIMD</li><li>MISD</li><li>MIMD</li></ol><div class="why"><p>One instruction, many data. Multicore with separate programs would be MIMD.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">R·10. The variable <code>count</code> in <code>for (…) if (a[i] &gt; 0) count++;</code> shows…</p><ol class="opts"><li>Temporal locality only</li><li>Spatial locality only</li><li>Both kinds of locality</li><li>Neither kind of locality</li></ol><div class="why"><p>The same address is reused on every iteration; there are no neighbours. (The array <code>a</code> itself is spatial only.)</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">R·11. Two MESI caches, the same address. Which pair is possible?</p><ol class="opts"><li>M and S</li><li>E and S</li><li>M and E</li><li>S and S</li></ol><div class="why"><p>M and E mean “only I have it”, so the other cache must be I. S can pair with S or I.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">R·12. A write-back cache gets a write <strong>hit</strong>. Which happens?</p><ol class="opts"><li>The source is written</li><li>The dirty bit is set</li><li>The line is fetched</li><li>The line is evicted</li></ol><div class="why"><p>Only the cache is written, so its line is now dirty. The source is updated at eviction.</p></div></div>
+
+<p><strong>Drills: endless mixed practice.</strong> Do a few of each, swapping between them.</p>
+<p>Write policies:</p><div id="dWr"></div>
+<p>Amdahl and multi-level:</p><div id="dAm"></div>
+<p>Coherence:</p><div id="dCo"></div>
+<p>Stride and arrays:</p><div id="dSt"></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.2 (bits), 3.3 (replacement policies), 3.4–3.5 (multi-level, writes), 3.6 (stride), 3.7 and the MESI diagram, 2.6 (Flynn).
+</div>
+<p class="ask">Tell me in the terminal which ones you missed and what you wrote. If you open the quiz viewing again, send me Q1, Q2 and Q11 onward, and I'll swap these guesses for the real questions.</p>
+<nav class="lesson-nav">
+  <a href="0013-retake-replay.html">← Retake replay</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script src="../../assets/retake.js"></script>
+<script>
+  Retake.evict(document.getElementById('dEv'));
+  Cache.trace(document.getElementById('dTr'));
+  Cache.params(document.getElementById('dPa'));
+  Cache.split(document.getElementById('dSp'));
+  Cache.write(document.getElementById('dWr'));
+  Cache.amdahl(document.getElementById('dAm'));
+  Cache.coherence(document.getElementById('dCo'));
+  Cache.stride(document.getElementById('dSt'));
+</script>
+</body>
+</html>

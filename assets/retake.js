@@ -20,6 +20,7 @@
     v = String(v).trim().toLowerCase().replace(/_/g, '').replace(/\s/g, '');
     if (kind === 'hex') { v = v.replace(/^0x/, '').replace(/^0+(?=.)/, ''); }
     if (kind === 'bin') { v = v.replace(/^0b/, '').replace(/^0+(?=.)/, ''); }
+    if (kind === 'txt') { v = v.toUpperCase(); }
     return v;
   }
 
@@ -33,7 +34,7 @@
       box.innerHTML = '<p class="q">' + p.q + '</p>' + p.parts.map(function (x) {
         var t = x.kind ? 'text' : 'number';
         return '<p>' + x.label + ' <input type="' + t + '" step="any" class="n" autocomplete="off" spellcheck="false"' +
-          (x.kind ? ' placeholder="' + (x.kind === 'hex' ? '0x…' : '0b…') + '"' : '') + '> ' + (x.unit || '') + '</p>';
+          (x.kind ? ' placeholder="' + ({ hex: '0x…', bin: '0b…', txt: 'letter' })[x.kind] + '"' : '') + '> ' + (x.unit || '') + '</p>';
       }).join('') + '<div class="row"><button class="btn chk" type="button">Check</button></div><div class="why"></div>';
       var inputs = box.querySelectorAll('.n');
       function ok(i) {
@@ -168,5 +169,62 @@
     });
   }
 
-  root.Retake = { worst: worst, dirty: dirty, amdahl: amdahl, loop: loop, mask: mask, worstMisses: worstMisses, beladyMisses: beladyMisses, loopRun: loopRun };
+  /* ---------- Q1/Q2: which line does each policy evict? ----------
+   * The cache starts holding init (loaded in that order, each used once). Run hist, then Q misses.
+   * LFU: counts reset on eviction, ties go to LRU. Belady: furthest next use (never = furthest).
+   * Returns { victim, cache, tie } where tie = some decision needed a tie-break. */
+  var POL = { LRU: 'LRU', MRU: 'MRU', FIFO: 'FIFO', LFU: 'LFU', BEL: 'Belady' };
+  function evictRun(policy, init, hist, q, future) {
+    var full = init.concat(hist, [q], future), t = 0, c = [], tie = false, evicted = [];
+    function meta(x) { for (var i = 0; i < c.length; i++) if (c[i].k === x) return c[i]; return null; }
+    function victim(pos) {
+      var key;
+      if (policy === 'LRU') key = function (e) { return e.last; };
+      else if (policy === 'MRU') key = function (e) { return -e.last; };
+      else if (policy === 'FIFO') key = function (e) { return e.load; };
+      else if (policy === 'LFU') key = function (e) { return e.count; };
+      else key = function (e) { var j = full.indexOf(e.k, pos + 1); return -(j < 0 ? 1e9 : j); };
+      var best = Math.min.apply(null, c.map(key));
+      var cands = c.filter(function (e) { return key(e) === best; });
+      if (cands.length > 1) { tie = true; cands.sort(function (a, b) { return a.last - b.last; }); }
+      return cands[0];
+    }
+    full.forEach(function (x, pos) {
+      if (pos === init.length + hist.length) return;          // Q: stop and decide
+      if (pos > init.length + hist.length) return;
+      var e = meta(x);
+      if (e) { e.last = t; e.count++; }
+      else {
+        if (c.length === 3) { var v = victim(pos); evicted.push(v.k); c.splice(c.indexOf(v), 1); }
+        c.push({ k: x, load: t, last: t, count: 1 });
+      }
+      t++;
+    });
+    var v = victim(init.length + hist.length);
+    return { victim: v.k, cache: c.map(function (e) { return e.k + ' (loaded ' + e.load + ', last ' + e.last + ', count ' + e.count + ')'; }), tie: tie, evicted: evicted };
+  }
+  function evict(el) {
+    card(el, function () {
+      for (;;) {
+        var hard = Math.random() < 0.5, init = ['H', 'E', 'G'], pool = hard ? ['H', 'E', 'G', 'W'] : init;
+        var n = rint(4, 7), hist = [];
+        while (hist.length < n) { var x = pick(pool); if (hist[hist.length - 1] !== x) hist.push(x); }
+        if (hard && hist.indexOf('W') < 0) continue;
+        var future = []; while (future.length < 4) future.push(pick(['H', 'E', 'G', 'W']));
+        var res = {}, bad = false;
+        Object.keys(POL).forEach(function (p) { res[p] = evictRun(p, init, hist, 'Q', future); if (res[p].tie) bad = true; });
+        if (bad) continue;
+        return { q: 'Fully associative, <strong>3 slots</strong>, already holding <strong>H, E, G</strong> (loaded in that order at times 0, 1, 2; each used once). Then: <code>' +
+            hist.join(' ') + '</code>, then <strong>Q</strong> misses. Afterwards come <code>' + future.join(' ') + '</code>. Which line does each policy evict for Q?' +
+            (hard ? ' <em>W is new, so the cache contents differ between policies by the time Q arrives.</em>' : '') +
+            ' <span class="muted">(LFU: counts reset on eviction, ties to LRU.)</span>',
+          parts: Object.keys(POL).map(function (p) {
+            return { label: POL[p], kind: 'txt', text: res[p].victim,
+              how: (res[p].evicted.length ? 'earlier it evicted ' + res[p].evicted.join(', ') + '; ' : '') + 'at Q it holds ' + res[p].cache.join('; ') + '.' };
+          }) };
+      }
+    });
+  }
+
+  root.Retake = { worst: worst, dirty: dirty, amdahl: amdahl, loop: loop, mask: mask, evict: evict, worstMisses: worstMisses, beladyMisses: beladyMisses, loopRun: loopRun, evictRun: evictRun };
 })(typeof window !== 'undefined' ? window : globalThis);
