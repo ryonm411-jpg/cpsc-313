@@ -226,5 +226,57 @@
     });
   }
 
-  root.Retake = { worst: worst, dirty: dirty, amdahl: amdahl, loop: loop, mask: mask, evict: evict, worstMisses: worstMisses, beladyMisses: beladyMisses, loopRun: loopRun, evictRun: evictRun };
+  /* ---------- Q10 deeper: five kinds of address question (R3.4 / R3.6 style) ---------- */
+  function hx(n) { return '0x' + n.toString(16).toUpperCase(); }
+  function geo() {
+    var line = pick([16, 32, 64]), kb = pick([4, 8, 16, 32]), ways = pick([1, 1, 2, 4, 8, 16]);
+    var lines = kb * 1024 / line, sets = lines / ways;
+    var name = (ways === 1 ? 'Direct-mapped' : ways + '-way') + ', <strong>' + kb + ' KB</strong>, <strong>' + line + '-byte</strong> lines, 32-bit addresses';
+    return { line: line, kb: kb, ways: ways, lines: lines, sets: sets, b: log2(line), s: log2(sets), t: 32 - log2(line) - log2(sets), name: name };
+  }
+  function fields(g, a) { return { off: a % g.line, idx: Math.floor(a / g.line) % g.sets, tag: Math.floor(a / (g.line * g.sets)) }; }
+  function addr(el, only) {
+    card(el, function () {
+      var kind = only || pick(['split', 'masks', 'build', 'reverse', 'same']), g = geo();
+      var a = rint(0x100000, 0xFFFFFFF), f = fields(g, a);
+      var split = 'tag | index | offset = ' + g.t + ' | ' + g.s + ' | ' + g.b + ' bits';
+      if (kind === 'split') return { q: g.name + '. Address <code>' + hx(a) + '</code>. Split it.',
+        parts: [
+          { label: 'Offset bits', answer: g.b, how: 'log₂(' + g.line + ').' },
+          { label: 'Index bits', answer: g.s, how: g.kb * 1024 + ' ÷ ' + g.line + ' = ' + g.lines + ' lines ÷ ' + g.ways + ' ways = ' + g.sets + ' sets, log₂ = ' + g.s + '.' },
+          { label: 'Tag bits', answer: g.t, how: '32 − ' + g.s + ' − ' + g.b + '.' },
+          { label: 'Offset (hex)', kind: 'hex', text: hx(f.off), how: 'address mod ' + g.line + ' (the low ' + g.b + ' bits).' },
+          { label: 'Index (hex)', kind: 'hex', text: hx(f.idx), how: 'drop the offset (÷ ' + g.line + '), then keep the low ' + g.s + ' bits (mod ' + g.sets + ').' },
+          { label: 'Tag (hex)', kind: 'hex', text: hx(f.tag), how: 'address ÷ ' + g.line * g.sets + ' (drop offset and index bits).' }] };
+      if (kind === 'masks') return { q: g.name + '. Write each mask as a 32-bit hex number.',
+        parts: [
+          { label: 'Offset mask', kind: 'hex', text: hx(g.line - 1), how: g.b + ' ones at the bottom.' },
+          { label: 'Index mask', kind: 'hex', text: hx((g.sets - 1) * g.line), how: g.s + ' ones above ' + g.b + ' zeros' + (g.s === 0 ? ' — no index bits, so 0.' : '.') },
+          { label: 'Tag mask', kind: 'hex', text: hx(0x100000000 - g.sets * g.line), how: 'everything above the low ' + (g.s + g.b) + ' bits: ' + g.t + ' ones, then ' + (g.s + g.b) + ' zeros.' }] };
+      if (kind === 'build') return { q: g.name + ' (' + split + '). A line has tag <code>' + hx(f.tag) + '</code> and sits in set <strong>' + f.idx + '</strong>. What address does byte <strong>' + f.off + '</strong> of that line have?',
+        parts: [
+          { label: 'Address (hex)', kind: 'hex', text: hx(a), how: '(tag × ' + g.sets + ' + index) × ' + g.line + ' + offset = (' + f.tag + ' × ' + g.sets + ' + ' + f.idx + ') × ' + g.line + ' + ' + f.off + '. In bits: tag, then index, then offset, glued together.' },
+          { label: 'Address of the first byte of that line (hex)', kind: 'hex', text: hx(a - f.off), how: 'set the offset to 0.' }] };
+      if (kind === 'reverse') return { q: (g.ways === 1 ? 'A direct-mapped' : 'A ' + g.ways + '-way') + ' cache splits 32-bit addresses into <strong>' + g.t + ' tag</strong>, <strong>' + g.s + ' index</strong> and <strong>' + g.b + ' offset</strong> bits. Work backwards.',
+        parts: [
+          { label: 'Line size', unit: 'bytes', answer: g.line, how: '2^' + g.b + '.' },
+          { label: 'Number of sets', answer: g.sets, how: '2^' + g.s + '.' },
+          { label: 'Total lines', answer: g.lines, how: g.sets + ' sets × ' + g.ways + ' ways.' },
+          { label: 'Cache size', unit: 'bytes', answer: g.kb * 1024, how: g.lines + ' lines × ' + g.line + ' bytes = ' + g.kb + ' KB.' }] };
+      // same set?
+      var sameSet = Math.random() < 0.5, b2;
+      if (sameSet) b2 = (f.tag + rint(1, 9)) * g.sets * g.line + f.idx * g.line + rint(0, g.line - 1);
+      else b2 = a + g.line * rint(1, Math.max(1, Math.min(g.sets - 1, 5)));
+      if (g.sets === 1) sameSet = true;
+      var f2 = fields(g, b2), same = f2.idx === f.idx, sameLine = same && f2.tag === f.tag;
+      return { q: g.name + '. Addresses <code>' + hx(a) + '</code> and <code>' + hx(b2) + '</code>.',
+        parts: [
+          { label: 'Index of the first (hex)', kind: 'hex', text: hx(f.idx), how: '(address ÷ ' + g.line + ') mod ' + g.sets + '.' },
+          { label: 'Index of the second (hex)', kind: 'hex', text: hx(f2.idx), how: 'same recipe.' },
+          { label: 'Same set? (yes/no)', kind: 'txt', text: same ? 'yes' : 'no', how: same ? 'equal indexes, so they compete for the same ' + g.ways + ' way(s).' : 'different indexes, so they never compete.' },
+          { label: 'Same line? (yes/no)', kind: 'txt', text: sameLine ? 'yes' : 'no', how: 'same line needs the same tag <em>and</em> index (only the offset may differ). Tags: ' + hx(f.tag) + ' and ' + hx(f2.tag) + '.' }] };
+    });
+  }
+
+  root.Retake = { addr: addr, worst: worst, dirty: dirty, amdahl: amdahl, loop: loop, mask: mask, evict: evict, worstMisses: worstMisses, beladyMisses: beladyMisses, loopRun: loopRun, evictRun: evictRun };
 })(typeof window !== 'undefined' ? window : globalThis);

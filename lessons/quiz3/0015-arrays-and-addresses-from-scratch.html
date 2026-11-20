@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrays and Addresses</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 3 · Quiz 3 retake · Lesson 15</div>
+  <h1>Arrays and Addresses, from Scratch</h1>
+  <p class="subtitle">Q9 (hit or miss in a 2D loop) and Q10 (masks and address fields), one small step at a time.</p>
+</header>
+
+<p><strong>Your win for today:</strong> draw any 2D loop on a grid, row by row or column by column, and read off every hit and miss. Then pull any field out of an address, or build an address back from its fields. Part 1 takes about 30 minutes, and Part 2 about 30. Do them on different days if you can.</p>
+
+<!-- =================================================== PART 1 -->
+<h2>Part 1 · Q9: hits and misses in a 2D loop</h2>
+
+<h3>Step 1 · A 2D array is one long strip</h3>
+<p>Memory has no rows. C lays the array out <strong>row after row</strong> (row-major): all of row 0, then all of row 1, and so on. <span class="cite">Slides 3.6</span></p>
+<pre><code>double a[16][16];
+strip:  a[0][0] a[0][1] … a[0][15] | a[1][0] a[1][1] … a[1][15] | a[2][0] …
+element:   0       1         15    |   16      17        31     |   32</code></pre>
+<div class="callout key"><span class="label">Rule 1</span>
+<strong>element number of a[r][c] = (row width) × r + c</strong>. Here the row width is 16, so a[r][c] is element 16r + c.</div>
+<div class="quiz numeric" data-answer="18"><p class="q">1·1. <code>double a[16][16]</code>. Element number of a[1][2]?</p><div class="why"><p>16 × 1 + 2 = 18.</p></div></div>
+<div class="quiz numeric" data-answer="35"><p class="q">1·2. Element number of a[2][3]?</p><div class="why"><p>16 × 2 + 3 = 35.</p></div></div>
+
+<h3>Step 2 · Cache lines chop the strip into blocks of E</h3>
+<div class="callout key"><span class="label">Rule 2</span>
+<strong>E = line size ÷ element size</strong> (char 1, int/float 4, double/long 8 bytes).<br>
+<strong>line number = ⌊element number ÷ E⌋</strong>. Lines start at columns 0, E, 2E, … in every row, as long as E divides the row width.</div>
+<div class="quiz numeric" data-answer="2"><p class="q">1·3. <code>double</code>, 16-byte lines. E?</p><div class="why"><p>16 ÷ 8 = 2. Lines hold columns [0,1], [2,3], [4,5], …</p></div></div>
+<div class="quiz numeric" data-answer="8"><p class="q">1·4. <code>int</code>, 32-byte lines. E?</p><div class="why"><p>32 ÷ 4 = 8.</p></div></div>
+<div class="quiz numeric" data-answer="4"><p class="q">1·5. <code>double a[16][16]</code>, E = 4. Which line is a[1][3] in?</p><div class="why"><p>Element 19; ⌊19 / 4⌋ = 4. Line 4 holds a[1][0] to a[1][3].</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">1·6. E = 2. Are a[1][1] and a[1][2] in the same line?</p><ol class="opts"><li>Yes, the same row</li><li>No, different lines</li><li>Yes, they're adjacent</li><li>Only if E were 1</li></ol><div class="why"><p>Elements 17 and 18: ⌊17/2⌋ = 8, ⌊18/2⌋ = 9. Being in the same row or next to each other doesn't matter; the line boundary falls between columns 1 and 2.</p></div></div>
+
+<h3>Step 3 · The one rule for hits and misses</h3>
+<div class="callout key"><span class="label">Rule 3 (when the array fits in the cache)</span>
+Nothing is ever evicted, so the <strong>first touch of a line is a miss, and every later touch is a hit</strong>.<br>
+<strong>Total misses = the number of different lines the loop touches.</strong><br>
+<strong>Total hits = total accesses − total misses.</strong><br>
+In the quiz, <code>double a[16][16]</code> is 2048 bytes and the cache is 2048 bytes, so it fits.</div>
+
+<h3>Step 4 · Draw the grid: five moves that solve every version</h3>
+<ol class="steps">
+<li>Draw the corner of the array that the loop uses.</li>
+<li><strong>Number the cells in the order the loop visits them</strong> (1, 2, 3, …). Unvisited cells get a dash.</li>
+<li>Draw a bar every E columns. Each block between bars is one line.</li>
+<li><strong>Misses</strong> = blocks that contain at least one number.</li>
+<li>For a single cell: it's a <strong>miss if it has the smallest number in its block</strong>, otherwise a hit.</li>
+</ol>
+<p><strong>Try it.</strong> The explorer does those five moves for you, one access at a time. Start with the quiz's loop (it's already set up): press Step and read the line under the grid each time. Then switch “walk” to <em>column by column</em> and watch what changes.</p>
+<div id="ex"></div>
+
+<h3>Step 5 · Row by row: the quiz's loop</h3>
+<pre><code>for (i = 0; i &lt; 4; i++)
+    for (j = i; j &lt; 4; j++)
+        sum += a[i][j];        // E = 2</code></pre>
+<p>Row 0 visits columns 0–3, row 1 columns 1–3, row 2 columns 2–3, row 3 column 3. With E = 2 the blocks are [0,1] and [2,3]:</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Row</th><th>Block [0,1]</th><th>Block [2,3]</th><th>Misses</th><th>Hits</th></tr>
+<tr><td>0</td><td>a[0][0] <strong>M</strong>, a[0][1] H</td><td>a[0][2] <strong>M</strong>, a[0][3] H</td><td>2</td><td>2</td></tr>
+<tr><td>1</td><td>a[1][1] <strong>M</strong></td><td>a[1][2] <strong>M</strong>, a[1][3] H</td><td>2</td><td>1</td></tr>
+<tr><td>2</td><td>—</td><td>a[2][2] <strong>M</strong>, a[2][3] H</td><td>1</td><td>1</td></tr>
+<tr><td>3</td><td>—</td><td>a[3][3] <strong>M</strong></td><td>1</td><td>0</td></tr>
+</table></div>
+<p>6 misses, 4 hits. <strong>Shortcut for one row</strong> from column <em>start</em> to <em>end</em> with j++: misses = ⌊end/E⌋ − ⌊start/E⌋ + 1. For row 1: ⌊3/2⌋ − ⌊1/2⌋ + 1 = 2.</p>
+<div class="callout"><span class="label">When the row shortcut breaks</span>
+It assumes every block between start and end gets touched. With <code>j += 2</code> and E = 1, or with a step bigger than E, some blocks are skipped, so the shortcut overcounts. Count the blocks with numbers in them instead (Step 4). That always works.</div>
+<div class="quiz numeric" data-answer="4"><p class="q">1·7. E = 4, one row, j from 2 to 13 (j++). Misses in that row?</p><div class="why"><p>Shortcut: ⌊13/4⌋ − ⌊2/4⌋ + 1 = 3 − 0 + 1 = 4. Check with the blocks: [0–3] (via 2, 3), [4–7], [8–11], [12–15] (via 12, 13). 4 blocks.</p></div></div>
+<div class="quiz numeric" data-answer="8"><p class="q">1·8. Same row. Hits?</p><div class="why"><p>Accesses = 13 − 2 + 1 = 12. Hits = 12 − 4 = 8.</p></div></div>
+
+<h3>Step 6 · Column by column</h3>
+<pre><code>for (i = 0; i &lt; 4; i++)
+    for (j = 0; j &lt; 4; j++)
+        sum += a[j][i];        // j picks the ROW: walking down column i</code></pre>
+<p>The inner loop now changes the <strong>row</strong>. Each step down jumps 16 elements, far past the end of a line, so <strong>every access in the first column lands in a new line and misses</strong>. But those lines also hold the next E − 1 columns. So when the loop moves to column 1, those cells are already loaded and <strong>hit</strong>.</p>
+<div class="table-scroll"><table class="data">
+<tr><th>E = 2, 4×4</th><th>col 0</th><th>col 1</th><th>col 2</th><th>col 3</th></tr>
+<tr><td>Visit order</td><td>1–4</td><td>5–8</td><td>9–12</td><td>13–16</td></tr>
+<tr><td>Result</td><td>all <strong>M</strong></td><td>all hit</td><td>all <strong>M</strong></td><td>all hit</td></tr>
+</table></div>
+<div class="callout key"><span class="label">The surprise</span>
+That's 8 misses and 8 hits, <strong>the same totals as row by row</strong>. When the array fits, the totals depend only on <em>which</em> cells are touched (Rule 3), not on the order. Order decides only <em>which cell</em> in each block is the miss: the earliest-numbered one.<br>
+Order <em>does</em> change the totals when the array <strong>doesn't</strong> fit: a column walk then evicts lines before it comes back for them. Check the sizes first.</div>
+<div class="quiz" data-answer="0"><p class="q">1·9. Column by column, E = 2, square 4×4. Is a[1][0] a hit or a miss?</p><ol class="opts"><li>Miss; first touch of its line</li><li>Hit; a[0][0] loaded it there</li><li>Hit; row 1 was loaded before</li><li>Not accessed by this loop</li></ol><div class="why"><p>a[1][0] is element 16, a new line. a[0][0] is in a different line (element 0).</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">1·10. Same loop. Is a[2][1] a hit or a miss?</p><ol class="opts"><li>Miss; first touch of its line</li><li>Hit; a[2][0] loaded it earlier</li><li>Miss; columns never share lines</li><li>Not accessed by this loop</li></ol><div class="why"><p>a[2][0] and a[2][1] share a line (elements 32, 33). a[2][0] was visited in the column-0 pass, before a[2][1].</p></div></div>
+<div class="quiz numeric" data-answer="6"><p class="q">1·11. Triangle, column by column: <code>for (i = 0; i &lt; 4; i++) for (j = i; j &lt; 4; j++) sum += a[j][i];</code> with E = 2. Misses?</p><div class="why"><p>The touched cells are those with row ≥ column: row 0 has column 0 (1 block), row 1 has 0–1 (1 block), row 2 has 0–2 (2 blocks), row 3 has 0–3 (2 blocks). 1 + 1 + 2 + 2 = 6.</p></div></div>
+<div class="quiz numeric" data-answer="4"><p class="q">1·12. Same loop, hits?</p><div class="why"><p>Accesses = 4 + 3 + 2 + 1 = 10. 10 − 6 = 4.</p></div></div>
+<div class="quiz numeric" data-answer="16"><p class="q">1·13. Square, column by column, E = 4, 8×8 (i, j &lt; 8). Misses?</p><div class="why"><p>Each of the 8 rows has columns 0–7, which is 2 blocks of 4. 8 × 2 = 16. Hits = 64 − 16 = 48.</p></div></div>
+
+<h3>Step 7 · Changing the loop</h3>
+<div class="table-scroll"><table class="data">
+<tr><th>Change</th><th>Misses</th><th>Hits</th><th>Why</th></tr>
+<tr><td><code>j++</code> → <code>j += 2</code> (E ≥ 2)</td><td>same</td><td>fewer</td><td>Every block still gets at least one visit; there are just fewer visits per block.</td></tr>
+<tr><td>step ≥ E, or E = 1</td><td>= accesses</td><td>0</td><td>Every access is in its own block.</td></tr>
+<tr><td>Bigger line (larger E)</td><td>fewer</td><td>more</td><td>Fewer, larger blocks.</td></tr>
+<tr><td>16-way or fully associative</td><td>same</td><td>same</td><td>The array fits, so there were no conflict misses to remove.</td></tr>
+<tr><td>Row order ↔ column order</td><td>same totals*</td><td>same totals*</td><td>*Only while the array fits.</td></tr>
+</table></div>
+<div class="quiz numeric" data-answer="40"><p class="q">1·14. The 16×16 triangle (j from i, 136 accesses), E = 4, but with <code>j += 2</code>. Misses?</p><div class="why"><p>The same blocks are touched as with j++: 40. Only the hits drop, from 96 to 32 (72 accesses − 40).</p></div></div>
+
+<p><strong>Drill: click the misses.</strong> A random loop each time: row or column order, square or triangle, step 1 or 2. Use the five moves. The answer shades the real line blocks so you can see what you missed.</p>
+<div id="dg"></div>
+<p><strong>Drill: column order only.</strong></p>
+<div id="dgc"></div>
+
+<!-- =================================================== PART 2 -->
+<h2>Part 2 · Q10: masks and address fields</h2>
+
+<h3>Step 1 · Hex is just binary in groups of 4</h3>
+<div class="table-scroll"><table class="data">
+<tr><td>0 0000</td><td>1 0001</td><td>2 0010</td><td>3 0011</td><td>4 0100</td><td>5 0101</td><td>6 0110</td><td>7 0111</td></tr>
+<tr><td>8 1000</td><td>9 1001</td><td>A 1010</td><td>B 1011</td><td>C 1100</td><td>D 1101</td><td>E 1110</td><td>F 1111</td></tr>
+</table></div>
+<p>To convert, swap each hex digit for its 4 bits. To go back, group the bits in fours <strong>from the right</strong>, padding the left with zeros.</p>
+<div class="quiz" data-answer="2"><p class="q">2·1. 0x7C in binary?</p><ol class="opts"><li>0111 1101</li><li>0110 1100</li><li>0111 1100</li><li>1110 1100</li></ol><div class="why"><p>7 = 0111, C = 1100.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">2·2. 10 1110 in hex?</p><ol class="opts"><li>0xBA</li><li>0x2E</li><li>0xB8</li><li>0x5C</li></ol><div class="why"><p>Group from the right: 10 | 1110 → 0010 1110 → 2E.</p></div></div>
+
+<h3>Step 2 · Every address is three fields</h3>
+<pre><code>  high bits                                  low bits
+[      tag      |    index    |   offset   ]
+                   s bits        b bits
+b = log₂(line size)    s = log₂(sets)    tag = everything left</code></pre>
+<p><strong>sets = cache size ÷ line size ÷ ways.</strong> The offset says which byte inside the line; the index says which set; the tag tells lines in the same set apart. <span class="cite">Slides 3.2, cache parameters sheet</span></p>
+
+<h3>Step 3 · Masks: ones where the field is</h3>
+<div class="callout key"><span class="label">Three masks</span>
+<strong>offset mask = line − 1</strong> (b ones at the bottom)<br>
+<strong>index mask = (sets − 1) × line</strong> (s ones sitting above b zeros)<br>
+<strong>tag mask</strong> = all the remaining high bits: 2³² − sets × line for 32-bit addresses<br>
+<strong>field = (address AND mask) shifted right</strong> by the number of bits below it.</div>
+<p>Worked: 16 KB, 4-way, 64-byte lines. Sets = 16384 ÷ 64 ÷ 4 = 64, so b = 6 and s = 6.</p>
+<ul>
+<li>Offset mask: 11 1111 = <strong>0x3F</strong></li>
+<li>Index mask: 1111 1100 0000 = <strong>0xFC0</strong></li>
+<li>Tag mask: 1111 … 1111 0000 0000 0000 = <strong>0xFFFFF000</strong></li>
+</ul>
+<div class="quiz" data-answer="3"><p class="q">2·3. 4 KB direct-mapped, 32-byte lines. Index mask?</p><ol class="opts"><li>0x7F</li><li>0x1F</li><li>0xF80</li><li>0xFE0</li></ol><div class="why"><p>128 sets → 7 ones above 5 zeros: 1111 1110 0000 = 0xFE0. 0x7F is “7 ones” without the shift, a common slip.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">2·4. Same cache. Tag mask (32-bit)?</p><ol class="opts"><li>0xFFFFF000</li><li>0xFFFFFF80</li><li>0x00000FFF</li><li>0xFFFFFFE0</li></ol><div class="why"><p>The index and offset take the low 12 bits, so the tag is the top 20: 0xFFFFF000.</p></div></div>
+
+<h3>Step 4 · Pull the fields out of an address</h3>
+<p>Worked with your drill's problem: <strong>2-way, 2 KB, 16-byte lines, address 0xCB6EEC.</strong></p>
+<ol class="steps">
+<li>Sets = 2048 ÷ 16 ÷ 2 = 64. So b = 4 and s = 6. Index mask = 63 × 16 = 0x3F0.</li>
+<li>Write the low hex digits in binary: 0x…EEC = 1110 1110 1100.</li>
+<li><strong>Offset</strong> = the low 4 bits = 1100 (0xC = 12).</li>
+<li><strong>Index</strong> = the next 6 bits: 1110 1110 1100 → drop 1100 → 1110 1110 → keep 6 → <strong>10 1110</strong> (0x2E = 46).</li>
+<li><strong>Tag</strong> = everything above the low 10 bits = <strong>0x32DB</strong>.</li>
+</ol>
+<div class="quiz" data-answer="1"><p class="q">2·5. 8 KB, 2-way, 32-byte lines (128 sets). Index of 0x12345678, in hex?</p><ol class="opts"><li>0x78</li><li>0x33</li><li>0x56</li><li>0x2B3</li></ol><div class="why"><p>…0101 0110 0111 1000. Drop 5 offset bits → …0101 0110 011. Keep 7 → 011 0011 = 0x33.</p></div></div>
+
+<h3>Step 5 · Build an address back (like R3.6)</h3>
+<div class="callout key"><span class="label">Glue the fields together</span>
+<strong>address = (tag × sets + index) × line + offset</strong>, which is tag bits, then index bits, then offset bits, written side by side.</div>
+<p>Worked: 4 KB direct-mapped, 32-byte lines (s = 7, b = 5, so 12 low bits). Tag 0x1A2B, set 5, byte 9. The low 12 bits are index 000 0101 then offset 0 1001: 0000 1010 1001 = 0x0A9. The tag goes on top: <strong>0x1A2B0A9</strong>.</p>
+<div class="quiz" data-answer="2"><p class="q">2·6. Same cache. Tag 0x1A2B, set 5. Address of the <em>first</em> byte of that line?</p><ol class="opts"><li>0x1A2B005</li><li>0x1A2B0A9</li><li>0x1A2B0A0</li><li>0x01A2B05</li></ol><div class="why"><p>Offset 0: index 5 shifted up 5 bits = 0xA0, so 0x1A2B0A0.</p></div></div>
+
+<h3>Step 6 · Work backwards from the bit counts (like R3.4)</h3>
+<p>Line = 2^b. Sets = 2^s. Lines = sets × ways. Size = lines × line size.</p>
+<div class="quiz numeric" data-answer="16384"><p class="q">2·7. 32-bit addresses split 19 tag / 7 index / 6 offset; 2-way. Cache size in bytes?</p><div class="why"><p>Line = 64, sets = 128, lines = 256, size = 256 × 64 = 16384 (16 KB).</p></div></div>
+<div class="quiz numeric" data-answer="20"><p class="q">2·8. Same cache made 4-way, same size. Tag bits now?</p><div class="why"><p>Sets halve to 64, so the index drops to 6 bits and the tag gains that bit: 32 − 6 − 6 = 20.</p></div></div>
+
+<h3>Step 7 · Same set? Same line?</h3>
+<div class="callout key"><span class="label">Compare fields</span>
+<strong>Same set</strong> = same index; the two lines compete for that set's ways.<br>
+<strong>Same line</strong> = same tag <em>and</em> the same index; only the offset differs, so one load brings in both.</div>
+<p>8 KB, 2-way, 32-byte lines: 0x12345678 has index 0x33 and tag 0x12345.</p>
+<div class="quiz" data-answer="1"><p class="q">2·9. 0x12347678 vs 0x12345678?</p><ol class="opts"><li>Same set, same line</li><li>Same set, different line</li><li>Different set, same tag</li><li>Different set and tag</li></ol><div class="why"><p>Index 0x33 for both; tags 0x12347 and 0x12345.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">2·10. 0x12345668 vs 0x12345678?</p><ol class="opts"><li>Same set, same line</li><li>Same set, different line</li><li>Different set, same tag</li><li>Different set and tag</li></ol><div class="why"><p>They differ only in the low 5 bits (0x68 vs 0x78 share bits 5 and up), so they're in the same line.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">2·11. 0x12345688 vs 0x12345678?</p><ol class="opts"><li>Same set, same line</li><li>Same set, different line</li><li>Different set, same tag</li><li>Different set and tag</li></ol><div class="why"><p>0x688 has index 0x34, the next set. Same tag 0x12345.</p></div></div>
+
+<p><strong>Drills: one kind at a time.</strong> Get two right in a row, then move to the next.</p>
+<p>Split an address:</p><div id="a1"></div>
+<p>Write the masks:</p><div id="a2"></div>
+<p>Build an address:</p><div id="a3"></div>
+<p>Work backwards:</p><div id="a4"></div>
+<p>Same set or same line:</p><div id="a5"></div>
+<p><strong>Mixed, quiz-style:</strong></p><div id="a6"></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Slides 3.2 (address fields) and 3.6 (row-major layout, stride), plus the cache parameters sheet you get in the quiz. CS:APP 3e §6.2–6.4 covers the same ideas with more pictures.
+</div>
+<p class="ask">Tell me in the terminal which ones you missed and what you wrote. If a step lost you, name the step number and I'll explain it another way.</p>
+<nav class="lesson-nav">
+  <a href="0014-the-rest-of-the-quiz.html">← The rest of the quiz</a>
+  <a href="index.html">Quiz 3 plan</a>
+  <a href="../../reference/0003-cache-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/retake.js"></script>
+<script src="../../assets/gridloop.js"></script>
+<script>
+  Grid.explore(document.getElementById('ex'));
+  Grid.drill(document.getElementById('dg'));
+  Grid.drill(document.getElementById('dgc'), { order: 'col' });
+  Retake.addr(document.getElementById('a1'), 'split');
+  Retake.addr(document.getElementById('a2'), 'masks');
+  Retake.addr(document.getElementById('a3'), 'build');
+  Retake.addr(document.getElementById('a4'), 'reverse');
+  Retake.addr(document.getElementById('a5'), 'same');
+  Retake.addr(document.getElementById('a6'));
+</script>
+</body>
+</html>

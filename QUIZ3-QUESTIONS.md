@@ -5,7 +5,7 @@ The student took Quiz 3 around 2026-11-06. There are two sets of notes here:
 1. **Quiz review notes (2026-11-18), the more accurate set.** The student opened the quiz viewing and took notes question by question. These use the **real question numbers** (Q3–Q10; Q1, Q2 and the questions after Q10 weren't recorded). The student says the retake will be mostly the same, with **one question harder and changed**.
 2. **First recall (2026-11-06)**, written from memory right after the quiz. This is less reliable, and its numbering doesn't match the quiz. Its worked sections are kept below because they still teach the methods.
 
-Practice for everything: [lessons/quiz3/0013-retake-replay.html](lessons/quiz3/0013-retake-replay.html). It has one section per real question number, a harder version of each, and random drills for Q6–Q10. For Q1/Q2 (probably the eviction-policy question), Q10 b/c and Q11 onward: [lessons/quiz3/0014-the-rest-of-the-quiz.html](lessons/quiz3/0014-the-rest-of-the-quiz.html).
+Practice for everything: [lessons/quiz3/0013-retake-replay.html](lessons/quiz3/0013-retake-replay.html). It has one section per real question number, a harder version of each, and random drills for Q6–Q10. For Q1/Q2 (probably the eviction-policy question), Q10 b/c and Q11 onward: [lessons/quiz3/0014-the-rest-of-the-quiz.html](lessons/quiz3/0014-the-rest-of-the-quiz.html). Q9 and Q10 from the beginning, with column-order loops and every kind of address question: [lessons/quiz3/0015-arrays-and-addresses-from-scratch.html](lessons/quiz3/0015-arrays-and-addresses-from-scratch.html).
 
 ---
 
