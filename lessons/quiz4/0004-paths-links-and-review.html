@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paths, Links, Coherence</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 4</div>
+  <h1>Directories, Paths and Links</h1>
+  <p class="subtitle">A directory is a file full of (name, inode number) pairs. Once you know that, path lookups and links follow.</p>
+</header>
+
+<p><strong>Your win for today:</strong> count the disk reads for a path (R4.13), say which <code>ln</code> commands work (R4.14), match the vocabulary (R4.15), and redo the MSI/MESI comparison (R4.2, R4.3). About 25 minutes.</p>
+
+<h2>1 · Directories</h2>
+<p>A <strong>directory</strong> is a file whose contents are <strong>directory entries</strong>. Each entry maps a <strong>name → inode number</strong>. Programs can read a directory but only the file system writes it, which keeps the structure valid. Every directory has <code>.</code> (itself) and <code>..</code> (its parent). <span class="cite">OSTEP ch. 39 §39.12–39.14; ch. 40 §40.4</span></p>
+<pre><code>directory "home" (inode 12), its data block:
+  name     inode #
+  .        12
+  ..       2
+  notes    57
+  src      90</code></pre>
+<div class="callout key"><span class="label">Three words that sound alike (R4.15)</span>
+<strong>inode</strong>: on-disk metadata of one file, including the <strong>LBN → PBN map</strong>.<br>
+<strong>directory entry</strong>: one <strong>name → inode number</strong> mapping.<br>
+<strong>directory</strong>: a <strong>file whose contents are directory entries</strong>, written only by the file system.<br>
+<strong>v-node</strong>: the <em>in-memory</em> kernel copy of a file's metadata (Lesson 2's third table).</div>
+<div class="quiz" data-answer="1"><p class="q">Where is a file's name stored?</p><ol class="opts"><li>In the file's inode</li><li>In a directory entry</li><li>In the open-file table</li><li>In the file's first block</li></ol><div class="why"><p>The inode knows nothing about names. That's what lets one file have several names (hard links).</p></div></div>
+
+<h2>2 · Resolving a path (R4.13)</h2>
+<p>To open <code>/l/brd/n/w/gn/y</code>, the file system walks one component at a time. The root's inode number is fixed and known.</p>
+<ol class="steps">
+<li>Read <strong>/'s inode</strong>, then <strong>/'s data block</strong>. Find "l" → inode #.</li>
+<li>Read <strong>l's inode</strong>, then <strong>l's data block</strong>. Find "brd".</li>
+<li>Repeat for brd, n, w, gn: 2 reads each.</li>
+<li>Read <strong>y's inode</strong>, then <strong>y's first data block</strong>, which holds the first byte.</li>
+</ol>
+<div class="callout key"><span class="label">Rule</span>
+With <strong>k</strong> names after the root, nothing cached, one-block directories and one inode per block:<br>
+<strong>reads = 2 × (k + 1)</strong> (every directory including /, plus the file, each costs inode + one data block).<br>
+<code>/l/brd/n/w/gn/y</code>: k = 6, so <strong>14</strong>.</div>
+<p>Variations to watch for: if the root inode is already cached, subtract 1. If a directory spans 2 blocks, the name might be in the second one. If the question asks only to <em>open</em> the file (not read a byte), drop the last data block.</p>
+<div id="path"></div>
+
+<h2>3 · Hard links and symbolic links (R4.14)</h2>
+<div class="table-scroll"><table class="data">
+<tr><th></th><th>Hard link: <code>ln target new</code></th><th>Symbolic link: <code>ln -s target new</code></th></tr>
+<tr><td>What it creates</td><td>a new <strong>directory entry</strong> with the <em>same inode number</em></td><td>a new small <strong>file</strong> whose contents are the path string</td></tr>
+<tr><td>Across file systems?</td><td><strong>No</strong>: inode numbers only mean something inside one file system</td><td><strong>Yes</strong>: it's just text</td></tr>
+<tr><td>To a directory?</td><td><strong>No</strong> (not allowed, since it could make loops)</td><td><strong>Yes</strong></td></tr>
+<tr><td>Target must exist?</td><td>yes</td><td>no; it can dangle</td></tr>
+<tr><td>Delete the original name</td><td>the file survives; the inode's <strong>link count</strong> drops by 1</td><td>the link now points nowhere</td></tr>
+</table></div>
+<p class="cite">man ln; man 2 link (EXDEV across file systems, EPERM for directories); OSTEP ch. 39 §39.14–39.15</p>
+<p>R4.14: <code>ln ../ myParentDir</code> fails (hard link to a directory). <code>ln -s ../fooFile barFile</code> works. <code>ln -s /Volumes/OtherFilesystem/a newfile</code> works (symbolic links may cross file systems). The answer is the <strong>second and third</strong>.</p>
+<div class="quiz" data-answer="2"><p class="q">Which command fails?</p><ol class="opts"><li><code>ln -s /Volumes/OtherFilesystem/dirA myDir</code></li><li><code>ln ../fooFile barFile</code></li><li><code>ln /Volumes/OtherFilesystem/fileA newfile</code></li><li><code>ln -s ../ upDir</code></li></ol><div class="why"><p>A hard link across file systems fails, because the inode number would refer to the wrong disk. The other three: symlink to a dir, hard link to a file on the same FS, symlink to a dir.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q"><code>ln a b</code>, then <code>rm a</code>. What happens to the data?</p><ol class="opts"><li>Still readable through b</li><li>Deleted; b is dangling</li><li>Moved into b's own inode</li><li>Lost until a is recreated</li></ol><div class="why"><p>Both names pointed to the same inode. rm drops the link count from 2 to 1; blocks are freed only at 0.</p></div></div>
+
+<h2>4 · Back to coherence: MSI vs MESI (R4.2, R4.3)</h2>
+<p>Recap from <a href="../quiz3/0007-msi-and-mesi.html">Quiz 3, Lesson 7</a>: </p>
+<div class="callout key"><span class="label">Pairs (R4.2)</span>
+<strong>Same cache slot (set #22):</strong> the two caches may hold <em>different</em> lines there, so <strong>every pair is possible</strong>, including E/E and E/M.<br>
+<strong>Same memory line:</strong> M and E mean "only I have it", so the only legal pairs are <strong>I + anything</strong> and <strong>S + S</strong>. From R4.2's second list: (a) I/E, (c) S/S, (d) I/I.</div>
+<div class="callout key"><span class="label">Where the protocols differ (R4.3)</span>
+Same start state (so I, S or M; MSI has no E):<br>
+• <strong>Core 1 read miss</strong> (start I, nobody else has it): MSI → S, MESI → <strong>E</strong>. <strong>Different.</strong><br>
+• <strong>Core 2 reads</strong> while Core 1 is in M: course MSI → I, MESI → S. <strong>Different.</strong><br>
+• Core 1 read hit: no change in either. Core 1 write hit: M in both.<br>
+So R4.3's answer is <strong>the read miss and "Core 2 reads"</strong>.</div>
+<div class="quiz" data-answer="3"><p class="q">Same memory line, two MESI caches. Which pair is possible?</p><ol class="opts"><li>E and S</li><li>M and S</li><li>E and E</li><li>I and M</li></ol><div class="why"><p>Exclusive states pair only with I.</p></div></div>
+<p><strong>Drill: next state</strong></p>
+<div id="coh"></div>
+
+<h2>5 · Still to come: directory dumps</h2>
+<p>"Read binary dumps of directories" depends on the exact on-disk entry format your course uses: field order, sizes, and whether entries are fixed or variable length. I don't have your slides, so I haven't guessed. Send the file-system slides (or one dump question) and I'll build that lesson.</p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <a href="https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf">OSTEP ch. 39, "Files and Directories"</a> (free), the sections on directories, hard links and symbolic links. Then ch. 40 §40.4 for "reading a file from disk", which walks through the same path count.
+</div>
+<p class="ask">If anything is unclear, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0003-index-structures.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+  <a href="0005-mock-quiz.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/cache.js"></script>
+<script src="../../assets/fs.js"></script>
+<script>
+  FS.path(document.getElementById('path'));
+  Cache.coherence(document.getElementById('coh'));
+</script>
+</body>
+</html>

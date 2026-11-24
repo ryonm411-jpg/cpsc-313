@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disks From Scratch</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 1</div>
+  <h1>Disks From Scratch</h1>
+  <p class="subtitle">A spinning disk is a machine with moving parts. Every number in a disk question comes from the arm moving, the platter turning, or the data passing under the head.</p>
+</header>
+
+<p><strong>Your win for today:</strong> compute the average time to read one sector (R4.7), and say what happens to each part when one setting changes (4.6). About 20 minutes.</p>
+
+<h2>1 · What's inside</h2>
+<figure>
+<svg viewBox="0 0 520 200" role="img" aria-label="Platter with tracks and sectors, arm with head">
+  <circle cx="140" cy="100" r="90" fill="none" stroke="currentColor" stroke-width="2"/>
+  <circle cx="140" cy="100" r="65" fill="none" stroke="currentColor" stroke-opacity=".5"/>
+  <circle cx="140" cy="100" r="40" fill="none" stroke="currentColor" stroke-opacity=".5"/>
+  <circle cx="140" cy="100" r="8" fill="currentColor"/>
+  <path d="M140 100 L230 100 M140 100 L204 36 M140 100 L140 10 M140 100 L76 36 M140 100 L50 100 M140 100 L76 164 M140 100 L140 190 M140 100 L204 164" stroke="currentColor" stroke-opacity=".25"/>
+  <path d="M 205 64 A 65 65 0 0 0 186 54" stroke="#c2410c" stroke-width="10" fill="none"/>
+  <line x1="420" y1="170" x2="200" y2="62" stroke="currentColor" stroke-width="5"/>
+  <circle cx="420" cy="170" r="9" fill="currentColor"/>
+  <rect x="192" y="55" width="14" height="10" fill="#c2410c"/>
+  <text x="250" y="40" font-size="13" fill="currentColor">one sector (orange): the smallest unit read</text>
+  <text x="300" y="120" font-size="13" fill="currentColor">arm moves the head in/out (seek)</text>
+  <text x="10" y="196" font-size="13" fill="currentColor">platter spins (RPM)</text>
+  <text x="235" y="80" font-size="13" fill="currentColor">ring = track</text>
+</svg>
+<figcaption>One platter seen from above. Real drives stack several platters; one track position on all of them is a <em>cylinder</em>.</figcaption>
+</figure>
+<div class="table-scroll"><table class="data">
+<tr><th>Word</th><th>Meaning</th></tr>
+<tr><td><strong>Platter</strong></td><td>The spinning circular surface that holds the data.</td></tr>
+<tr><td><strong>Track</strong></td><td>One ring on the platter.</td></tr>
+<tr><td><strong>Sector</strong></td><td>One slice of a track, usually 512 bytes. The disk reads and writes whole sectors and never a single byte.</td></tr>
+<tr><td><strong>Head / arm</strong></td><td>The head reads the data passing under it. The arm moves it to the right track.</td></tr>
+<tr><td><strong>RPM</strong></td><td>Rotations per minute: how fast the platter spins.</td></tr>
+</table></div>
+<p class="cite">OSTEP ch. 37 §37.2–37.3; CS:APP §6.1.2</p>
+
+<h2>2 · Why disks aren't used like memory</h2>
+<p>Memory answers in about <strong>100 ns</strong>. A disk takes about <strong>10 ms</strong>, which is roughly 100,000 times slower, because it has to move metal. Two things follow from that:</p>
+<ol class="steps">
+<li><strong>Disks are block devices.</strong> You can't load one byte from a disk. The OS asks for whole blocks (one or more sectors) and copies them into memory. Programs never point directly at disk data.</li>
+<li><strong>Most of the cost is getting there, not reading.</strong> Once the head is in place, data streams quickly, so it pays to read big, contiguous chunks and to cache recently used blocks in memory.</li>
+</ol>
+<div class="quiz" data-answer="2"><p class="q">Why can't a program do <code>movq (disk address), %rax</code>?</p><ol class="opts"><li>Disks store data in little-endian order</li><li>Disk addresses are always longer than 64 bits</li><li>Disks transfer whole blocks, not single bytes</li><li>The CPU is not allowed to read files</li></ol><div class="why"><p>A disk is a block device: the OS reads whole sectors/blocks into memory, and only then can the program use load instructions on the copy.</p></div></div>
+
+<h2>3 · The three parts of an access</h2>
+<div class="callout key"><span class="label">The formula</span>
+<strong>access time = seek + rotational latency + transfer</strong>
+<ol>
+<li><strong>Seek</strong>: move the arm to the right track. The question gives you the average.</li>
+<li><strong>Rotational latency</strong>: wait for the sector to spin under the head. On <em>average</em> that's <strong>half a rotation</strong>.</li>
+<li><strong>Transfer</strong>: the sector passes under the head. That's <strong>one rotation ÷ sectors per track</strong>.</li>
+</ol></div>
+<p>The only conversion you need: <strong>one rotation = 60,000 / RPM milliseconds</strong>, because a minute is 60,000 ms.</p>
+
+<h3>Worked example: R4.7</h3>
+<p>Seek 21 ms, 7200 RPM, 16 sectors per track.</p>
+<ol class="steps">
+<li>One rotation = 60,000 / 7200 = <strong>8.3333 ms</strong>.</li>
+<li>Rotational latency = half = <strong>4.1667 ms</strong>.</li>
+<li>Transfer = 8.3333 / 16 = <strong>0.5208 ms</strong>.</li>
+<li>Total = 21 + 4.1667 + 0.5208 = 25.6875 ≈ <strong>25.69 ms</strong>.</li>
+</ol>
+<div class="callout"><span class="label">Trap</span>Round only at the end. Rounding 4.17 + 0.52 early gives 25.69 here by luck, but on other numbers it lands 0.01 off, and that's outside PrairieLearn's tolerance.</div>
+
+<div class="quiz numeric" data-answer="7.5" data-tol="0.005"><p class="q">A disk spins at 4000 RPM. What is its <em>average rotational latency</em>, in ms?</p><div class="why"><p>One rotation = 60,000 / 4000 = 15 ms. On average you wait half of it: <strong>7.5 ms</strong>. If you typed 15, you forgot the "half".</p></div></div>
+
+<h2>4 · Your turn</h2>
+<p>Random problems. Do at least four in a row correctly.</p>
+<div id="disk"></div>
+
+<h2>5 · "What changes if…" (4.6)</h2>
+<p>Ask one question about each part: <em>does this setting change it?</em></p>
+<div class="table-scroll"><table class="data">
+<tr><th>Change</th><th>Seek</th><th>Rotational latency</th><th>Transfer per sector</th><th>Throughput (bytes/s)</th></tr>
+<tr><td><strong>Spins slower</strong> (lower RPM)</td><td>same</td><td>larger</td><td>larger</td><td>lower</td></tr>
+<tr><td><strong>Spins faster</strong></td><td>same</td><td>smaller</td><td>smaller</td><td>higher</td></tr>
+<tr><td><strong>Faster arm</strong></td><td>smaller</td><td>same</td><td>same</td><td>higher for random reads</td></tr>
+<tr><td><strong>More sectors per track</strong>, same RPM</td><td>same</td><td>same</td><td>smaller</td><td>higher</td></tr>
+</table></div>
+<p>Seek is the arm and has nothing to do with spinning. Rotation and transfer both scale with the rotation time. <strong>Throughput</strong> means bytes per second: the same bytes over a longer time is lower throughput.</p>
+<div class="callout"><span class="label">Your 4.6 attempt</span>
+You answered "insufficient information / smaller / the same" for a drive that spins more slowly. Using the table: throughput will be <strong>lower</strong>, seek time will be <strong>the same</strong>, and sector transfer time will be <strong>larger</strong>. "Insufficient information" is only right when the question changes two things that pull in opposite directions.</div>
+
+<div class="quiz" data-answer="1"><p class="q">Drive 2 is identical to drive 1 but has a faster arm. Its rotational latency will…</p><ol class="opts"><li>be smaller than drive 1</li><li>be the same as drive 1</li><li>be larger than drive 1</li><li>be impossible to tell</li></ol><div class="why"><p>Rotational latency depends only on RPM. The arm affects seek only.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Drive 2 spins faster and packs fewer sectors per track. The transfer time for one sector will…</p><ol class="opts"><li>be impossible to tell</li><li>be smaller than drive 1</li><li>be larger than drive 1</li><li>be the same as drive 1</li></ol><div class="why"><p>Faster spin shrinks the rotation, but fewer sectors make each one a bigger slice of it. Without numbers the two effects can't be compared. This is the case where "insufficient information" is right.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">For a small random read, which part usually dominates?</p><ol class="opts"><li>Transfer time</li><li>Moving bytes over the bus</li><li>The CPU's cache</li><li>Seek plus rotation</li></ol><div class="why"><p>In R4.7, 25.17 of the 25.69 ms is positioning. That's why file systems try to place a file's blocks next to each other.</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <a href="https://pages.cs.wisc.edu/~remzi/OSTEP/file-disks.pdf">OSTEP ch. 37, "Hard Disk Drives"</a> (free), §37.3–37.4. Then your course's disk slides, which win if they disagree.
+</div>
+<p class="ask">If anything is unclear, or a PrairieLearn answer disagrees with this page, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+  <a href="0002-file-descriptors.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script>FS.disk(document.getElementById('disk'));</script>
+</body>
+</html>

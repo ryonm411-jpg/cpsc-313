@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File Index Structures</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 3</div>
+  <h1>Where Are My Blocks? Index Structures</h1>
+  <p class="subtitle">A file is a list of blocks scattered over the disk. The index is the map from "block 7 of my file" to "block 91,204 on the disk".</p>
+</header>
+
+<p><strong>Your win for today:</strong> turn a byte offset into a block, find a physical block in an extent list, and compute the first-indirect offset and the maximum file size (R4.8–R4.12). About 25 minutes.</p>
+
+<h2>1 · Two kinds of block number</h2>
+<ul>
+<li><strong>LBN, logical block number</strong>: the block's position <em>inside the file</em>. Byte offset <em>x</em> is in LBN <strong>⌊x / block size⌋</strong>.</li>
+<li><strong>PBN, physical block number</strong>: where that block actually sits <em>on the disk</em>.</li>
+</ul>
+<p>The <strong>inode</strong> is the file's metadata: size, owner, permissions, times, and the <strong>LBN → PBN map</strong>. It does <em>not</em> hold the file's name; that's in the directory (Lesson 4). <span class="cite">OSTEP ch. 40 §40.3</span></p>
+<div class="quiz numeric" data-answer="27"><p class="q">Blocks are 2048 bytes. Which LBN holds byte offset 55,950?</p><div class="why"><p>55,950 / 2048 = 27.3, so LBN <strong>27</strong> (block 0 holds bytes 0–2047).</p></div></div>
+
+<h2>2 · Flat index</h2>
+<p>The simplest map: one array of PBNs, entry <em>i</em> is the PBN of LBN <em>i</em>.</p>
+<pre><code>index:  [ 812 | 40 | 41 | 3077 | 9 | … ]
+          LBN0  LBN1 LBN2  LBN3  LBN4</code></pre>
+<p>To read any byte: compute the LBN, look it up, read that <strong>one</strong> data block. If the index is already in memory, any byte costs exactly <strong>1 disk read</strong>. That's R4.8: offset 55,950 is LBN 27, and the answer is <strong>1 block</strong>. The 27 is the distractor: you don't read blocks 0–26 to get to 27.</p>
+<p>Drawback: the array must be as long as the biggest file allowed, even for tiny files.</p>
+
+<h2>3 · Extents</h2>
+<p>An <strong>extent</strong> is a run of contiguous blocks, stored as <strong>(starting PBN, length)</strong>. A file is an ordered list of extents. A file stored contiguously needs just one extent. <span class="cite">OSTEP ch. 40 aside "Extent-based approaches"</span></p>
+<pre><code>extents: (212, 3)  (980, 5)  (40, 2)
+LBN:      0 1 2     3 4 5 6 7  8 9
+PBN:    212 213 214  980 … 984  40 41</code></pre>
+<p>To find LBN <em>n</em>: walk the list, subtracting each length until <em>n</em> is less than the current extent's length, then add the leftover to its start. Above, LBN 3 is past the first extent (3 blocks), 0 into the second: <strong>980</strong>.</p>
+<div class="callout"><span class="label">R4.9 needs its figure</span>
+"The file below" refers to a picture you didn't paste. If its first extent is longer than 3 blocks, LBN 3 = 212 + 3 = <strong>215</strong>; otherwise use the method above. Send me a screenshot and I'll check.</div>
+<div id="extent"></div>
+
+<h2>4 · Hybrid index (the Unix inode)</h2>
+<p>The inode holds a few <strong>direct</strong> pointers (straight to data blocks), then <strong>indirect</strong> pointers to blocks that are full of more pointers. <span class="cite">OSTEP ch. 40 §40.3 "The Multi-Level Index"</span></p>
+<figure>
+<svg viewBox="0 0 560 190" role="img" aria-label="Inode with direct, single and double indirect pointers">
+  <g fill="none" stroke="currentColor">
+  <rect x="10" y="20" width="110" height="160"/>
+  <rect x="200" y="110" width="80" height="30"/>
+  <rect x="200" y="150" width="80" height="30"/>
+  <rect x="330" y="150" width="80" height="30"/>
+  </g>
+  <g fill="currentColor" font-size="12">
+  <text x="18" y="40">inode</text>
+  <text x="18" y="62">direct 0</text><text x="18" y="80">direct 1</text><text x="18" y="98">… direct d−1</text>
+  <text x="18" y="128">single indirect</text><text x="18" y="168">double indirect</text>
+  <text x="206" y="130">p pointers</text><text x="206" y="170">p pointers</text><text x="336" y="170">p pointers</text>
+  <text x="300" y="130">→ p data blocks</text><text x="420" y="170">→ p² data blocks</text>
+  <text x="200" y="62">→ data block</text><text x="200" y="80">→ data block</text><text x="200" y="98">→ data block</text>
+  </g>
+  <g stroke="#c2410c" stroke-width="2"><line x1="120" y1="124" x2="200" y2="124"/><line x1="120" y1="165" x2="200" y2="165"/><line x1="280" y1="165" x2="330" y2="165"/></g>
+</svg>
+<figcaption><strong>p = block size ÷ address size</strong>: how many PBNs fit in one block.</figcaption>
+</figure>
+<div class="callout key"><span class="label">Three formulas</span>
+<strong>p = B / a</strong> (block size / bytes per address)<br>
+<strong>first offset needing the single indirect = d × B</strong><br>
+<strong>max file = (d + s·p + dd·p² + t·p³) × B</strong>, where s, dd, t count the single, double and triple pointers (usually 1 each)</div>
+<h3>R4.10</h3>
+<p>4096-byte blocks, 14 direct. The direct pointers cover LBNs 0–13, i.e. bytes 0 to 14 × 4096 − 1. The first byte that needs the indirect block is <strong>14 × 4096 = 57,344</strong>. The 4-byte address size doesn't matter for this part.</p>
+<h3>R4.11</h3>
+<p>400-byte blocks, 4-byte addresses: p = 100. 8 direct + 2 single + 2 double, no triple.</p>
+<p>blocks = 8 + 2·100 + 2·100² = 8 + 200 + 20,000 = 20,208 → <strong>20,208 × 400 = 8,083,200 bytes</strong>.</p>
+<div class="callout"><span class="label">Trap</span>Answer in <em>bytes</em>: don't stop at the block count. And the indirect blocks themselves hold pointers, not file data, so they don't add to the size.</div>
+<div class="quiz numeric" data-answer="2"><p class="q">With the inode in memory and nothing else cached, how many disk reads does it take to read a byte that lives under the <em>single</em> indirect pointer?</p><div class="why"><p>Read the indirect block (to find the PBN), then the data block: <strong>2</strong>. Direct = 1, double = 3, triple = 4.</p></div></div>
+<p><strong>Drill: hybrid offsets and reads</strong></p>
+<div id="index"></div>
+<p><strong>Drill: maximum file size</strong></p>
+<div id="max"></div>
+
+<h2>5 · Block size trade-offs (R4.12)</h2>
+<p>File system A has <strong>smaller</strong> blocks than B. Reason about one block, then about a whole file:</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Smaller blocks mean…</th><th>Why</th></tr>
+<tr><td>reading <em>one</em> block is faster</td><td>less data passes under the head (transfer is shorter; seek and rotation are the same)</td></tr>
+<tr><td><em>more</em> disk accesses per file</td><td>more blocks, and with poor contiguity each one may need its own seek</td></tr>
+<tr><td><em>lower</em> throughput</td><td>you pay seek + rotation more often for each byte moved</td></tr>
+<tr><td><em>less</em> wasted space at the end of files</td><td>the unused tail of a file's last block (<strong>internal</strong> fragmentation) is smaller</td></tr>
+<tr><td>a bigger index</td><td>more LBN → PBN entries per file</td></tr>
+</table></div>
+<p>So R4.12's two true statements are <strong>"A takes more disk accesses for the same file"</strong> and <strong>"A reads an individual block faster"</strong>. External fragmentation isn't what block size changes, and A has <em>lower</em> throughput.</p>
+<div class="quiz" data-answer="0"><p class="q">A file system doubles its block size. For a file system full of tiny files, wasted disk space will…</p><ol class="opts"><li>increase</li><li>decrease</li><li>stay the same</li><li>insufficient info</li></ol><div class="why"><p>A 100-byte file still occupies one whole block, so bigger blocks waste more (internal fragmentation).</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <a href="https://pages.cs.wisc.edu/~remzi/OSTEP/file-implementation.pdf">OSTEP ch. 40, "File System Implementation"</a> (free), §40.3 on inodes and the multi-level index, including the extents aside. Your course slides' names win: <em>flat</em>, <em>extent-based</em>, <em>hybrid</em>.
+</div>
+<p class="ask">If anything is unclear, ask me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0002-file-descriptors.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+  <a href="0004-paths-links-and-review.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script>
+  FS.extent(document.getElementById('extent'));
+  FS.index(document.getElementById('index'));
+  FS.maxsize(document.getElementById('max'));
+</script>
+</body>
+</html>

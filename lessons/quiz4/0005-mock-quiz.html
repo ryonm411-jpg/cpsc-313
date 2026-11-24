@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 4 Mock</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 5</div>
+  <h1>Mock Quiz 4</h1>
+  <p class="subtitle">Every Quiz 4 goal covered so far, mixed together, with fresh numbers.</p>
+</header>
+<div class="callout key">
+  <span class="label">How to take it</span>
+  Set a 50-minute timer. Use only paper, a calculator, the <a href="../../../diagramMESI.pdf">MESI diagram</a> and the man pages (<code>man 2 open</code>, <code>man 2 dup</code>, <code>man 2 fork</code>). Keep the lessons and the cheat sheet closed. Each answer is marked as soon as you give it, so write your reasoning first. This is my own practice set, not a copy of the real quiz. Directory binary dumps aren't included yet because I still need your slides for their format.
+</div>
+
+<h2>A · Disks</h2>
+<h3>1 · Access time</h3>
+<div class="quiz numeric" data-answer="9.03" data-tol="0.005"><p class="q">Average seek 6 ms, 10,000 RPM, 200 sectors per track. What is the average time to read one sector, in ms? (2 decimals)</p><div class="why"><p>Rotation = 60,000 / 10,000 = 6 ms. Half a rotation = 3. Transfer = 6 / 200 = 0.03. Total 6 + 3 + 0.03 = <strong>9.03</strong>. <a href="0001-disks-from-scratch.html">Lesson 1 §3</a></p></div></div>
+<h3>2 · Rotation</h3>
+<div class="quiz numeric" data-answer="5.56" data-tol="0.005"><p class="q">A disk spins at 5400 RPM. Average rotational latency, in ms? (2 decimals)</p><div class="why"><p>60,000 / 5400 = 11.111 ms per rotation. On average you wait half: <strong>5.56</strong>.</p></div></div>
+<h3>3 · What changes</h3>
+<div class="quiz" data-answer="2"><p class="q">A new disk packs more sectors onto each track and keeps the same RPM and arm. What happens to the time to transfer one sector?</p><ol class="opts"><li>It gets larger</li><li>It stays the same</li><li>It gets smaller</li><li>Not enough information</li></ol><div class="why"><p>Transfer = rotation ÷ sectors per track. Same rotation, more sectors, so each one passes under the head faster. Seek and rotational latency don't change.</p></div></div>
+<h3>4 · Block devices</h3>
+<div class="quiz" data-answer="1"><p class="q">Why does the OS read whole blocks from a disk instead of single bytes?</p><ol class="opts"><li>Bytes on disk aren't addressable at all</li><li>Getting there costs far more than reading</li><li>Blocks are compressed when stored</li><li>The CPU can only load 4 KB at a time</li></ol><div class="why"><p>Seek and rotation are milliseconds, and the transfer itself is tiny. Once you've paid to get there, you take a whole block. The disk also only reads whole sectors.</p></div></div>
+
+<h2>B · File descriptors</h2>
+<h3>5 · Two opens</h3>
+<div class="quiz" data-answer="0"><p class="q">The file holds <code>abcdef</code>. Processes A and B each call <code>open()</code> on it. A reads 2 bytes, then B reads 1 byte. What does B read?</p><ol class="opts"><li><code>a</code></li><li><code>b</code></li><li><code>c</code></li><li><code>d</code></li></ol><div class="why"><p>Two separate <code>open()</code> calls make two open-file-table entries, each with its own offset. B's offset is still 0. <a href="0002-file-descriptors.html">Lesson 2</a></p></div></div>
+<h3>6 · fork</h3>
+<div class="quiz" data-answer="2"><p class="q">Same file. A process opens it, reads 2 bytes, then calls <code>fork()</code>. The child reads 1 byte. What does the child read?</p><ol class="opts"><li><code>a</code></li><li><code>b</code></li><li><code>c</code></li><li><code>d</code></li></ol><div class="why"><p>fork copies the fd table, but both copies point at the <strong>same</strong> open-file entry, so they share one offset, which is already 2.</p></div></div>
+<h3>7 · Lowest free fd</h3>
+<div class="quiz numeric" data-answer="5"><p class="q">A process starts with only fds 0, 1 and 2 open. It runs <code>x = open(…); y = open(…); close(x); z = open(…); w = dup(y);</code>. What is <code>w</code>?</p><div class="why"><p>open and dup return the lowest free fd. x = 3, y = 4. close(3) frees 3, so z = 3. dup(4) gets the lowest free one, <strong>5</strong>.</p></div></div>
+<h3>8 · Reference count</h3>
+<div class="quiz numeric" data-answer="3"><p class="q">A process opens a file once, then calls <code>fork()</code>. The child then calls <code>dup()</code> on that fd. What is the reference count of the open-file-table entry?</p><div class="why"><p>open: 1. fork copies the fd, so 2. dup adds another fd pointing at the same entry: <strong>3</strong>. There's still only one entry and one offset.</p></div></div>
+<h3>9 · Redirection</h3>
+<div class="quiz" data-answer="3"><p class="q">You want <code>cmd &gt;&gt; log.txt</code>. Which pair of lines sets it up?</p><ol class="opts"><li><code>fd = open("log.txt", O_RDONLY); dup2(fd, 0);</code></li><li><code>fd = open("log.txt", O_WRONLY|O_CREAT|O_TRUNC, 0644); dup2(fd, 1);</code></li><li><code>fd = open("log.txt", O_WRONLY|O_CREAT|O_APPEND, 0644); dup2(1, fd);</code></li><li><code>fd = open("log.txt", O_WRONLY|O_CREAT|O_APPEND, 0644); dup2(fd, 1);</code></li></ol><div class="why"><p><code>&gt;&gt;</code> appends, so O_APPEND, not O_TRUNC. <code>dup2(old, new)</code> makes <em>new</em> a copy of <em>old</em>, and we want fd 1 to become the file. Option 3 has the arguments backwards.</p></div></div>
+
+<h2>C · Index structures</h2>
+<h3>10 · LBN</h3>
+<div class="quiz numeric" data-answer="24"><p class="q">Blocks are 4096 bytes. Which logical block number holds byte offset 100,000?</p><div class="why"><p>100,000 / 4096 = 24.4, so <strong>24</strong>. <a href="0003-index-structures.html">Lesson 3</a></p></div></div>
+<h3>11 · Extents</h3>
+<div class="quiz numeric" data-answer="901"><p class="q">A file's extents, as (starting PBN, length): <code>(500, 4) (120, 3) (900, 6)</code>. Which physical block holds LBN 8?</p><div class="why"><p>8 − 4 = 4, past the first extent. 4 − 3 = 1, past the second. 1 into the third: 900 + 1 = <strong>901</strong>.</p></div></div>
+<h3>12 · First indirect offset</h3>
+<div class="quiz numeric" data-answer="12288"><p class="q">1024-byte blocks, 4-byte addresses, 12 direct pointers, then single, double and triple indirect. What is the smallest byte offset that needs the single indirect block?</p><div class="why"><p>12 × 1024 = <strong>12,288</strong>. The address size doesn't matter here.</p></div></div>
+<h3>13 · First double offset</h3>
+<div class="quiz numeric" data-answer="274432"><p class="q">Same inode. What is the smallest byte offset that needs the double indirect block?</p><div class="why"><p>p = 1024 / 4 = 256. Direct and single cover 12 + 256 = 268 blocks. 268 × 1024 = <strong>274,432</strong>.</p></div></div>
+<h3>14 · Max file size</h3>
+<div class="quiz numeric" data-answer="134762496"><p class="q">2048-byte blocks, 8-byte addresses. The inode has 10 direct pointers, 1 single and 1 double indirect, and no triple. Largest file, in bytes?</p><div class="why"><p>p = 2048 / 8 = 256. Blocks = 10 + 256 + 256² = 65,802. × 2048 = <strong>134,762,496</strong>. Watch the 8-byte addresses: with 4 you'd get p = 512.</p></div></div>
+<h3>15 · Reads</h3>
+<div class="quiz numeric" data-answer="3"><p class="q">Same inode as Q12, already in memory, nothing else cached. How many disk reads to read the byte at offset 300,000?</p><div class="why"><p>LBN 292 is past 268, so it's under the double indirect: read the double block, then a single block, then the data block. <strong>3</strong>.</p></div></div>
+<h3>16 · Block size</h3>
+<div class="quiz" data-answer="0,3"><p class="q">File system B has <em>larger</em> blocks than A. Which are true? Pick all that apply.</p><ol class="opts"><li>B needs fewer disk accesses for the same big file</li><li>B reads one individual block faster</li><li>B wastes less space on tiny files</li><li>B usually has higher throughput</li></ol><div class="why"><p>Bigger blocks: fewer blocks per file, so fewer seeks, and higher throughput. But each block takes longer to transfer, and a 100-byte file still fills a whole (bigger) block, so more internal fragmentation.</p></div></div>
+
+<h2>D · Paths and links</h2>
+<h3>17 · Path reads</h3>
+<div class="quiz numeric" data-answer="10"><p class="q">Read the first byte of <code>/usr/lib/x/a.txt</code>. Nothing is in memory; each inode is in its own block; each directory fits in one block. Fewest disk reads?</p><div class="why"><p>Four names after the root, so k = 4. Directories /, usr, lib, x cost 2 reads each (8), then the file's inode and first data block (2). 2 × (4 + 1) = <strong>10</strong>. <a href="0004-paths-links-and-review.html">Lesson 4 §2</a></p></div></div>
+<h3>18 · Path reads, variant</h3>
+<div class="quiz numeric" data-answer="8"><p class="q">Same path, but the root inode is already in memory, and you only <code>open()</code> the file without reading any data. Disk reads?</p><div class="why"><p>Start from 10. The cached root inode saves 1. Not reading a byte drops the file's data block, which saves 1 more. <strong>8</strong>. You still read the file's inode, since open checks permissions.</p></div></div>
+<h3>19 · Link count</h3>
+<div class="quiz numeric" data-answer="2"><p class="q"><code>touch a; ln a b; ln -s a c</code>. What is the link count of a's inode?</p><div class="why"><p>The hard link b adds a second directory entry for the same inode: 2. The symlink c is a separate file holding the text "a", so it doesn't change a's count. <strong>2</strong>.</p></div></div>
+<h3>20 · Dangling</h3>
+<div class="quiz" data-answer="1"><p class="q">Then <code>rm a</code>. Which still works?</p><ol class="opts"><li><code>cat c</code> only</li><li><code>cat b</code> only</li><li>Both <code>cat b</code> and <code>cat c</code></li><li>Neither of them</li></ol><div class="why"><p>b is the same inode, now with link count 1, so the data survives. c holds the path "a", which no longer exists, so it dangles.</p></div></div>
+<h3>21 · Which ln fails</h3>
+<div class="quiz" data-answer="2"><p class="q">Which command fails?</p><ol class="opts"><li><code>ln -s /mnt/usb/notes mynotes</code></li><li><code>ln report.txt copy.txt</code></li><li><code>ln /mnt/usb/notes mynotes</code></li><li><code>ln -s .. up</code></li></ol><div class="why"><p>Assuming /mnt/usb is a different file system, a hard link can't cross it, because inode numbers only mean something on one disk. Symlinks can cross file systems and point at directories.</p></div></div>
+<h3>22 · Vocabulary</h3>
+<div class="quiz" data-answer="3"><p class="q">Which structure holds a file's LBN → PBN map?</p><ol class="opts"><li>Its directory entry</li><li>The open-file table</li><li>The parent directory</li><li>The file's inode</li></ol><div class="why"><p>The inode holds metadata plus the block map, but no name. A directory entry is just name → inode number.</p></div></div>
+
+<h2>E · Coherence (MSI and MESI)</h2>
+<h3>23 · MESI read miss</h3>
+<div class="quiz" data-answer="2"><p class="q">MESI. Core 1 read-misses on a line no other cache holds. Core 1's new state?</p><ol class="opts"><li>M</li><li>S</li><li>E</li><li>I</li></ol><div class="why"><p>Nobody else has it, so Exclusive. In MSI the same read gives S. That's one of the two places the protocols differ.</p></div></div>
+<h3>24 · Course MSI</h3>
+<div class="quiz" data-answer="0"><p class="q">Course MSI diagram. Core 1 holds a line in M, and Core 2 reads it. Core 1's new state?</p><ol class="opts"><li>I, after a write-back</li><li>S, after a write-back</li><li>M, with no change</li><li>S, with no write-back</li></ol><div class="why"><p>On the course MSI diagram a remote read or write takes M to I. MESI would give S. That's the other difference.</p></div></div>
+<h3>25 · Legal pairs</h3>
+<div class="quiz" data-answer="1"><p class="q">Two MESI caches hold the <em>same memory line</em>. Which pair can occur?</p><ol class="opts"><li>E and S</li><li>S and S</li><li>M and S</li><li>E and E</li></ol><div class="why"><p>M and E mean "only I have it", so they pair only with I. The legal pairs are I with anything, and S with S.</p></div></div>
+
+<h2>Score yourself</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Section</th><th>Questions</th><th>If you missed some, redo</th></tr>
+<tr><td>A · Disks</td><td>1–4</td><td><a href="0001-disks-from-scratch.html">Lesson 1</a> drill, 4 in a row</td></tr>
+<tr><td>B · File descriptors</td><td>5–9</td><td><a href="0002-file-descriptors.html">Lesson 2</a>: draw the three tables</td></tr>
+<tr><td>C · Index structures</td><td>10–16</td><td><a href="0003-index-structures.html">Lesson 3</a> index and max-size drills</td></tr>
+<tr><td>D · Paths and links</td><td>17–22</td><td><a href="0004-paths-links-and-review.html">Lesson 4</a> §2–3</td></tr>
+<tr><td>E · Coherence</td><td>23–25</td><td><a href="0004-paths-links-and-review.html">Lesson 4</a> §4, then <a href="../quiz3/0007-msi-and-mesi.html">Quiz 3 Lesson 7</a></td></tr>
+</table></div>
+<p class="ask">Tell me your score and which numbers you missed, in the terminal, and I'll build the next session around them.</p>
+
+<nav class="lesson-nav">
+  <a href="0004-paths-links-and-review.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>

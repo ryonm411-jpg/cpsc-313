@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz 4 Cheat Sheet</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Reference</div>
+  <h1>Disks and File Systems</h1>
+  <p class="subtitle">For studying only: you can't bring this into ORCA. In the quiz you get the man pages and the MSI/MESI diagrams.</p>
+</header>
+
+<h2>Disk</h2>
+<table class="data">
+<tr><td>one rotation</td><td><strong>60,000 / RPM</strong> ms</td></tr>
+<tr><td>avg rotational latency</td><td>½ rotation</td></tr>
+<tr><td>transfer one sector</td><td>rotation / sectors per track</td></tr>
+<tr><td>access time</td><td><strong>seek + ½ rotation + transfer</strong>; round at the end</td></tr>
+<tr><td>slower spin</td><td>seek same · latency ↑ · transfer ↑ · throughput ↓</td></tr>
+</table>
+
+<h2>File descriptors</h2>
+<table class="data">
+<tr><td>fd table</td><td>per process; 0 stdin, 1 stdout, 2 stderr; open returns the lowest free fd</td></tr>
+<tr><td>open file table</td><td>one entry per <code>open()</code>: <strong>offset</strong>, mode, refcount</td></tr>
+<tr><td>v-node table</td><td>one entry per file: in-memory inode</td></tr>
+<tr><td>fork / dup / dup2</td><td>share the open-file entry → <strong>shared offset</strong></td></tr>
+<tr><td>two separate opens</td><td>two entries → separate offsets, same data</td></tr>
+<tr><td><code>cmd &lt; f</code></td><td><code>fd = open(f, O_RDONLY); dup2(fd, 0);</code></td></tr>
+<tr><td><code>cmd &gt; f</code></td><td><code>fd = open(f, O_WRONLY|O_CREAT|O_TRUNC, 0644); dup2(fd, 1);</code></td></tr>
+</table>
+
+<h2>Index structures</h2>
+<table class="data">
+<tr><td>LBN of offset x</td><td>⌊x / B⌋</td></tr>
+<tr><td>flat</td><td>array LBN → PBN; index cached → 1 read per byte</td></tr>
+<tr><td>extent</td><td>list of (start PBN, length); walk, subtract lengths, add the remainder</td></tr>
+<tr><td>pointers per block</td><td>p = B / address size</td></tr>
+<tr><td>first indirect offset</td><td>d × B</td></tr>
+<tr><td>first double offset</td><td>(d + p) × B</td></tr>
+<tr><td>max file</td><td>(d + s·p + dd·p² + t·p³) × B bytes</td></tr>
+<tr><td>reads for a byte (inode cached)</td><td>direct 1 · single 2 · double 3 · triple 4</td></tr>
+<tr><td>smaller blocks</td><td>faster per block, more accesses per file, lower throughput, less internal fragmentation</td></tr>
+</table>
+
+<h2>Names</h2>
+<table class="data">
+<tr><td>inode</td><td>metadata + LBN→PBN map; no name</td></tr>
+<tr><td>directory entry</td><td>name → inode number</td></tr>
+<tr><td>directory</td><td>file of directory entries, written only by the FS</td></tr>
+<tr><td>path reads</td><td>k names after /, nothing cached: <strong>2(k + 1)</strong></td></tr>
+<tr><td>hard link</td><td>same inode; not to dirs, not across file systems</td></tr>
+<tr><td>symlink</td><td>a file holding a path; to dirs, across file systems, may dangle</td></tr>
+</table>
+
+<h2>Coherence</h2>
+<table class="data">
+<tr><td>same line</td><td>legal pairs: I + anything, S + S</td></tr>
+<tr><td>same slot</td><td>any pair</td></tr>
+<tr><td>MSI ≠ MESI</td><td>local read miss (S vs E); remote read on M (course MSI: I vs MESI: S)</td></tr>
+</table>
+</main>
+</body>
+</html>

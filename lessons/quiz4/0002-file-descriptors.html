@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>File Descriptors</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 2</div>
+  <h1>File Descriptors and the Three Tables</h1>
+  <p class="subtitle">A file descriptor is a small number. To answer any fd question, follow the arrows it starts.</p>
+</header>
+
+<p><strong>Your win for today:</strong> trace the three tables through <code>open</code>, <code>close</code>, <code>fork</code> and <code>dup</code>; answer "which character is read?" (R4.5); and write the two lines of I/O redirection (R4.4). About 25 minutes.</p>
+
+<h2>1 · What a file descriptor is</h2>
+<p>When a process opens a file, the kernel hands back a <strong>file descriptor</strong>: a small non-negative integer the process uses in every later call. <span class="cite">CS:APP §10.3; man open</span></p>
+<pre><code>int fd = open("notes.txt", O_RDONLY);   // e.g. returns 3
+char buf[10];
+ssize_t n = read(fd, buf, 10);          // reads up to 10 bytes, moves the offset by n
+write(1, buf, n);                       // fd 1 is standard output
+close(fd);                              // fd 3 is free again</code></pre>
+<p>Every process starts with three already open: <strong>0 = standard input</strong>, <strong>1 = standard output</strong>, <strong>2 = standard error</strong>. <code>open</code> always returns the <strong>lowest free</strong> number, so the first file you open is usually 3.</p>
+<div class="quiz" data-answer="1"><p class="q">A process has 0, 1, 2 open, opens a file (gets 3), opens another (gets 4), then closes 3 and opens a third file. What does the last open return?</p><ol class="opts"><li>5</li><li>3</li><li>4</li><li>0</li></ol><div class="why"><p>Lowest free number. 3 was freed by close.</p></div></div>
+
+<h2>2 · The three tables</h2>
+<figure>
+<svg viewBox="0 0 560 210" role="img" aria-label="fd table points to open file table points to v-node table">
+  <g font-size="12" fill="currentColor">
+  <text x="10" y="18" font-weight="bold">fd table (per process)</text>
+  <text x="200" y="18" font-weight="bold">open file table (system-wide)</text>
+  <text x="420" y="18" font-weight="bold">v-node table</text>
+  </g>
+  <g fill="none" stroke="currentColor">
+  <rect x="10" y="30" width="120" height="150"/>
+  <line x1="10" y1="60" x2="130" y2="60"/><line x1="10" y1="90" x2="130" y2="90"/><line x1="10" y1="120" x2="130" y2="120"/><line x1="10" y1="150" x2="130" y2="150"/>
+  <rect x="200" y="40" width="150" height="55"/>
+  <rect x="200" y="115" width="150" height="55"/>
+  <rect x="420" y="70" width="130" height="70"/>
+  </g>
+  <g font-size="12" fill="currentColor">
+  <text x="16" y="50">0 stdin</text><text x="16" y="80">1 stdout</text><text x="16" y="110">2 stderr</text><text x="16" y="140">3 →</text><text x="16" y="170">4 →</text>
+  <text x="208" y="58">offset = 1311</text><text x="208" y="74">mode = read</text><text x="208" y="90">refcount = 1</text>
+  <text x="208" y="133">offset = 1310</text><text x="208" y="149">mode = read/write</text><text x="208" y="165">refcount = 1</text>
+  <text x="428" y="90">file size, type,</text><text x="428" y="106">block map (inode)</text><text x="428" y="122">refcount = 2</text>
+  </g>
+  <g stroke="#c2410c" stroke-width="2" fill="none">
+  <path d="M60 135 L200 70"/><path d="M60 165 L200 140"/><path d="M350 68 L420 95"/><path d="M350 142 L420 115"/>
+  </g>
+</svg>
+<figcaption>fds 3 and 4 came from two separate <code>open</code> calls on the same file: two offsets, one file.</figcaption>
+</figure>
+<div class="table-scroll"><table class="data">
+<tr><th>Table</th><th>How many</th><th>Each entry holds</th></tr>
+<tr><td><strong>File descriptor table</strong></td><td>one per <em>process</em></td><td>a pointer to an open-file-table entry</td></tr>
+<tr><td><strong>Open file table</strong></td><td>one for the whole system; one entry per <code>open()</code> call</td><td><strong>the current offset</strong>, the mode (read/write), a reference count, and a pointer to the v-node</td></tr>
+<tr><td><strong>V-node table</strong></td><td>one for the whole system; one entry per <em>file</em></td><td>the file's metadata (an in-memory copy of its inode): size, type, where its blocks are</td></tr>
+</table></div>
+<p class="cite">CS:APP §10.8, Figures 10.12–10.14</p>
+<div class="callout key"><span class="label">The one idea that answers most questions</span>
+<strong>The offset lives in the open-file-table entry.</strong> Two fds share an offset exactly when they point to the <em>same</em> open-file-table entry.</div>
+
+<h2>3 · What each call does to the tables</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Call</th><th>fd table</th><th>Open file table</th><th>V-node table</th></tr>
+<tr><td><code>open(path, …)</code></td><td>new entry at the lowest free fd</td><td><strong>new</strong> entry, offset 0, refcount 1</td><td>reuse the file's v-node if already there (refcount +1), else create one</td></tr>
+<tr><td><code>close(fd)</code></td><td>remove the entry</td><td>refcount −1; at 0, free it</td><td>only when an open-file entry is freed: refcount −1; at 0, free it</td></tr>
+<tr><td><code>fork()</code></td><td>child gets a <strong>copy</strong> of the parent's fd table</td><td>no new entries; each refcount +1</td><td>no change</td></tr>
+<tr><td><code>dup(old)</code></td><td>lowest free fd points to old's entry</td><td>that entry's refcount +1</td><td>no change</td></tr>
+<tr><td><code>dup2(old, new)</code></td><td>close <code>new</code> if open, then <code>new</code> points to old's entry</td><td>refcount +1</td><td>no change</td></tr>
+</table></div>
+<p class="cite">man open, man close, man fork, man dup</p>
+
+<div class="quiz" data-answer="2"><p class="q">Process P calls <code>open("f")</code> twice, then <code>fork()</code>. How many open-file-table entries refer to f?</p><ol class="opts"><li>1</li><li>4</li><li>2</li><li>3</li></ol><div class="why"><p>One per <code>open</code> call = 2. fork adds no entries, it just raises each refcount to 2. There is still one v-node, with refcount 2.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">After <code>fd2 = dup(fd1)</code>, a read of 5 bytes on fd1 is followed by a read on fd2. Where does the fd2 read start?</p><ol class="opts"><li>5 bytes after fd1's start</li><li>at the start of the file</li><li>at fd1's starting offset</li><li>at the end of the file</li></ol><div class="why"><p>dup shares the open-file-table entry, so it shares the offset.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">A process opens f (fd 3) then calls <code>close(3)</code>. No one else has f open. What is freed?</p><ol class="opts"><li>Only the fd table entry</li><li>The fd and open-file entries</li><li>Only the open-file-table entry</li><li>All three entries</li></ol><div class="why"><p>The open-file refcount hits 0, so it's freed; that drops the v-node refcount to 0, so it's freed too.</p></div></div>
+
+<h2>4 · "Which character is read?" (R4.5)</h2>
+<p>The file holds <code>U,K,M,N,W,H,A,E,P,V</code> from offset 1310. A and B <strong>each open</strong> the file and seek to 1310, so they have two entries and two offsets.</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Step</th><th>A offset</th><th>B offset</th><th>Result</th></tr>
+<tr><td>A reads 1</td><td>1310 → 1311</td><td>1310</td><td><strong>U</strong></td></tr>
+<tr><td>B reads 1</td><td>1311</td><td>1310 → 1311</td><td><strong>U</strong>: B has its own offset</td></tr>
+<tr><td>B writes C,S</td><td>1311</td><td>1311 → 1313</td><td>bytes 1311–1312 become C,S (K,M overwritten)</td></tr>
+<tr><td>A reads 1</td><td>1311 → 1312</td><td>1313</td><td><strong>C</strong>: same file data, so A sees B's write</td></tr>
+<tr><td>B reads 1</td><td>1312</td><td>1313 → 1314</td><td><strong>N</strong></td></tr>
+</table></div>
+<div class="callout"><span class="label">Compare: if B were A's forked child</span>
+One shared offset: A reads U, B reads K, B writes C,S over M,N, A reads <strong>W</strong>, B reads <strong>H</strong>. Always check how the second fd was made first.</div>
+<p>Drill: the setup changes between separate <code>open</code>, <code>fork</code> and <code>dup</code>. Type letters.</p>
+<div id="fd"></div>
+
+<h2>5 · I/O redirection (R4.4)</h2>
+<p><code>command &lt; fileName</code> means "whatever the program reads from standard input (fd 0) should come from fileName". The program just calls <code>read(0, …)</code>. The shell's job is to make fd 0 point at the file before running it.</p>
+<pre><code>newFD = open(fileName, O_RDONLY);   // mode argument: N/A (only used with O_CREAT)
+dup2(newFD, STDIN_FILENO);          // STDIN_FILENO is 0: make fd 0 point where newFD points</code></pre>
+<p>Optionally <code>close(newFD)</code> afterwards, since fd 0 now holds its own reference. The order of <code>dup2</code>'s arguments is <strong>(the fd you have, the fd you want to replace)</strong>. <span class="cite">CS:APP §10.9; man dup</span></p>
+<div class="table-scroll"><table class="data">
+<tr><th>Shell syntax</th><th>open flags</th><th>then</th></tr>
+<tr><td><code>cmd &lt; f</code></td><td><code>O_RDONLY</code></td><td><code>dup2(newFD, 0)</code></td></tr>
+<tr><td><code>cmd &gt; f</code></td><td><code>O_WRONLY | O_CREAT | O_TRUNC</code>, mode e.g. 0644</td><td><code>dup2(newFD, 1)</code></td></tr>
+<tr><td><code>cmd &gt;&gt; f</code></td><td><code>O_WRONLY | O_CREAT | O_APPEND</code>, mode</td><td><code>dup2(newFD, 1)</code></td></tr>
+<tr><td><code>cmd 2&gt; f</code></td><td><code>O_WRONLY | O_CREAT | O_TRUNC</code>, mode</td><td><code>dup2(newFD, 2)</code></td></tr>
+</table></div>
+<div class="quiz" data-answer="2"><p class="q">Which line sends a program's standard output to the file opened as <code>fd</code>?</p><ol class="opts"><li><code>dup2(1, fd);</code></li><li><code>dup2(fd, 0);</code></li><li><code>dup2(fd, 1);</code></li><li><code>dup(1);</code></li></ol><div class="why"><p><code>dup2(old, new)</code> makes <em>new</em> a copy of <em>old</em>. We want fd 1 to become a copy of fd. <code>dup2(1, fd)</code> does the reverse: it throws away the file.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">For <code>cmd &gt; out.txt</code>, when out.txt doesn't exist yet, which flag is required?</p><ol class="opts"><li><code>O_RDONLY</code></li><li><code>O_CREAT</code></li><li><code>O_APPEND</code></li><li><code>O_EXCL</code></li></ol><div class="why"><p>Without O_CREAT, open fails on a missing file. With O_CREAT, the third argument (permissions) matters, unlike R4.4's read-only case.</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  CS:APP 3e §10.8 "Sharing Files" and §10.9 "I/O Redirection": three pages with the exact table diagrams. Also <code>man dup</code>, which you get in the quiz.
+</div>
+<p class="ask">If anything is unclear, ask me in the terminal. Tracing fd questions aloud with me works well.</p>
+
+<nav class="lesson-nav">
+  <a href="0001-disks-from-scratch.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+  <a href="0003-index-structures.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script>FS.fd(document.getElementById('fd'));</script>
+</body>
+</html>

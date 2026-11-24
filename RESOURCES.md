@@ -32,3 +32,11 @@
   The sheets available during the quiz.
 - CS:APP 3e §6.2-6.4 (memory hierarchy and caches), §6.4.5 (writes), §1.9.1 (Amdahl's Law)
   The readings listed on the slides, plus the book's Amdahl section.
+
+## Quiz 4 (Unit 4)
+
+- [OSTEP ch. 37 "Hard Disk Drives"](https://pages.cs.wisc.edu/~remzi/OSTEP/file-disks.pdf): geometry, seek/rotation/transfer, I/O time.
+- [OSTEP ch. 39 "Files and Directories"](https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf): fds, directories, hard and symbolic links.
+- [OSTEP ch. 40 "File System Implementation"](https://pages.cs.wisc.edu/~remzi/OSTEP/file-implementation.pdf): inodes, multi-level index, extents, path-read walkthrough.
+- CS:APP 3e §6.1.2 (disks), §10.8 (fd / open file / v-node tables), §10.9 (I/O redirection with dup2).
+- GAP: the course's unit 4 slides (file systems, directory dump format) haven't been supplied yet.
