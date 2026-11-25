@@ -6,6 +6,9 @@
  * FS.maxsize(el)  largest file for a hybrid index (direct + single + double [+ triple])
  * FS.extent(el)   extent list → physical block number of a logical block
  * FS.path(el)     disk reads to resolve a path and read the file's first byte
+ * FS.lseek(el)    return values of lseek / read on a file of known size
+ * FS.layout(el)   contiguous vs scattered blocks: time to read a whole file
+ * FS.dirdump(el)  read a v6-style directory block from a hex dump (16-byte entries, little-endian)
  *
  * Parts are numeric ({answer, tol}) or text ({text, kind: 'txt'}). Needs quiz.js first.
  * Exposes FS.calc for checking by hand / in node.
@@ -87,6 +90,29 @@
         lbn -= ext[i][1];
       }
       return null;
+    },
+    // whole-file read time: blocks on one track (contiguous) vs every block needing its own seek
+    layout: function (seek, rpm, spt, n) {
+      var rev = 60000 / rpm, x = rev / spt;
+      return { contig: seek + rev / 2 + n * x, scattered: n * (seek + rev / 2 + x) };
+    },
+    // v6-style directory: entries [inode, name] -> bytes (16 per entry: 2-byte LE inode, 14-byte name)
+    v6dir: function (entries) {
+      var b = [];
+      entries.forEach(function (e) {
+        b.push(e[0] & 255, (e[0] >> 8) & 255);
+        for (var i = 0; i < 14; i++) b.push(i < e[1].length ? e[1].charCodeAt(i) : 0);
+      });
+      return b;
+    },
+    v6parse: function (bytes) {
+      var out = [];
+      for (var o = 0; o + 16 <= bytes.length; o += 16) {
+        var ino = bytes[o] | (bytes[o + 1] << 8), name = '';
+        for (var i = 2; i < 16 && bytes[o + i]; i++) name += String.fromCharCode(bytes[o + i]);
+        out.push([ino, name]);
+      }
+      return out;
     },
     // fd scenario simulator: mode 'open' (two separate open calls) | 'fork' | 'dup'
     fd: function (text, base, mode, steps) {
@@ -228,5 +254,73 @@
     });
   }
 
-  root.FS = { calc: calc, disk: disk, fd: fd, index: index, maxsize: maxsize, extent: extent, path: path };
+
+  function lseek(el) {
+    card(el, function () {
+      var S = rint(300, 5000), a = rint(0, S - 1), n = pick([50, 100, 200, 500, 1000]);
+      if (Math.random() < 0.4) a = S - rint(1, Math.min(n - 1, S - 1));
+      var got = Math.min(n, S - a), off = a + got, k = rint(1, Math.min(off, 300)), m = pick([10, 64, 128]);
+      return {
+        q: 'A file is <strong>' + fmt(S) + ' bytes</strong> long. A program opens it with <code>O_RDONLY</code> and then runs these calls in order. What does each one return?',
+        parts: [
+          { label: '<code>lseek(fd, ' + a + ', SEEK_SET)</code> returns', answer: a, how: 'SEEK_SET puts the offset exactly at ' + a + ', and lseek returns the new offset' },
+          { label: '<code>read(fd, buf, ' + n + ')</code> returns', answer: got, how: got < n ? 'only ' + fmt(S) + ' − ' + a + ' = ' + got + ' bytes are left before the end, so read returns fewer than you asked for (a "short read")' : 'at least ' + n + ' bytes are left, so it reads all ' + n + ' and the offset becomes ' + off },
+          { label: '<code>lseek(fd, -' + k + ', SEEK_CUR)</code> returns', answer: off - k, how: 'the offset was ' + off + ' after the read, and SEEK_CUR moves relative to it: ' + off + ' − ' + k },
+          { label: '<code>lseek(fd, 0, SEEK_END)</code> returns', answer: S, how: 'SEEK_END means the file size plus the amount given: ' + fmt(S) + ' + 0' },
+          { label: '<code>read(fd, buf, ' + m + ')</code> returns', answer: 0, how: 'the offset is at the end of the file, and read returns <strong>0</strong> at end-of-file (−1 would mean an error)' }
+        ]
+      };
+    });
+  }
+
+  function layout(el) {
+    card(el, function () {
+      var seek = pick([4, 5, 6, 8, 9, 10, 12]), rpm = pick([5400, 6000, 7200, 10000, 12000, 15000]);
+      var spt = pick([100, 200, 250, 400, 500]), n = pick([10, 20, 25, 40, 50, 80, 100]);
+      var c = calc.layout(seek, rpm, spt, n), rev = 60000 / rpm;
+      return {
+        q: 'Average seek <strong>' + seek + ' ms</strong>, <strong>' + fmt(rpm) + ' RPM</strong>, <strong>' + spt + ' sectors per track</strong>. A file is <strong>' + n + ' blocks</strong>, and one block is one sector. Time to read the whole file (2 decimals):',
+        parts: [
+          { label: 'All on one track, one after another:', unit: 'ms', answer: r2(c.contig), tol: 0.011, how: 'one seek and one half rotation, then the ' + n + ' sectors stream past: ' + seek + ' + ' + r4(rev / 2) + ' + ' + n + ' × ' + r4(rev / spt) },
+          { label: 'Scattered, every block in a random place:', unit: 'ms', answer: r2(c.scattered), tol: 0.011, how: 'every block pays seek + half rotation + transfer: ' + n + ' × (' + seek + ' + ' + r4(rev / 2) + ' + ' + r4(rev / spt) + ')' },
+          { label: 'How many times slower is scattered? (1 decimal)', answer: Math.round(c.scattered / c.contig * 10) / 10, tol: 0.051, how: r2(c.scattered) + ' / ' + r2(c.contig) + '. This is why file systems try to keep a file\'s blocks together.' }
+        ]
+      };
+    });
+  }
+
+  function hex2(x) { return (x < 16 ? '0' : '') + x.toString(16); }
+  function dumpHTML(bytes) {
+    var rows = [];
+    for (var o = 0; o < bytes.length; o += 16) {
+      var h = [], t = '';
+      for (var i = 0; i < 16; i++) { var b = bytes[o + i]; h.push(hex2(b)); t += b >= 32 && b < 127 ? String.fromCharCode(b) : '.'; }
+      rows.push(('000' + o.toString(16)).slice(-4) + ':  ' + h.slice(0, 8).join(' ') + '  ' + h.slice(8).join(' ') + '  ' + t.replace(/&/g, '&amp;').replace(/</g, '&lt;'));
+    }
+    return '<pre style="font-size:.78rem">' + rows.join('\n') + '</pre>';
+  }
+
+  function dirdump(el) {
+    var names = ['notes', 'src', 'a.out', 'lab8', 'tmp', 'bin', 'data.txt', 'main.c', 'README', 'docs', 'q4', 'shell.c', 'x'];
+    card(el, function () {
+      var self = rint(2, 1500), parent = rint(1, 1500), pool = names.slice(), es = [[self, '.'], [parent, '..']];
+      var k = rint(3, 4);
+      for (var i = 0; i < k; i++) { var nm = pool.splice(rint(0, pool.length - 1), 1)[0]; es.push([rint(2, 3000), nm]); }
+      var dead = Math.random() < 0.7 ? rint(2, es.length - 1) : -1;
+      if (dead >= 0) es[dead] = [0, es[dead][1]];
+      var live = es.filter(function (e) { return e[0] !== 0; }), target = live[rint(2, live.length - 1)];
+      if (target[0] < 256 && Math.random() < 0.7) target[0] += 256 * rint(1, 9);
+      var bytes = calc.v6dir(es);
+      return {
+        q: 'Assumed format (v6 style; check it against your slides): each directory entry is <strong>16 bytes</strong>, made of a <strong>2-byte little-endian inode number</strong> and then a <strong>14-byte name</strong> padded with zero bytes. Inode number 0 means the slot is unused. Here is one directory\'s data block:' + dumpHTML(bytes),
+        parts: [
+          { label: 'Inode number of <code>' + target[1] + '</code> (decimal):', answer: target[0], how: 'its first two bytes are ' + hex2(target[0] & 255) + ' ' + hex2(target[0] >> 8) + '. Little-endian puts the low byte first, so read them backwards: 0x' + hex2(target[0] >> 8) + hex2(target[0] & 255) + ' = ' + target[0] },
+          { label: 'Inode number of this directory\'s parent:', answer: es[1][0], how: 'the parent is the <code>..</code> entry: 0x' + hex2(es[1][0] >> 8) + hex2(es[1][0] & 255) + ' = ' + es[1][0] },
+          { label: 'How many entries are in use (count . and ..):', answer: live.length, how: es.length + ' slots' + (dead >= 0 ? ', minus the one whose inode number is 00 00. It was deleted, but its old name bytes are still there' : ', and none has inode 0') }
+        ]
+      };
+    });
+  }
+
+  root.FS = { calc: calc, disk: disk, fd: fd, index: index, maxsize: maxsize, extent: extent, path: path, lseek: lseek, layout: layout, dirdump: dirdump };
 })(typeof window !== 'undefined' ? window : globalThis);

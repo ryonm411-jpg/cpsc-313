@@ -11,7 +11,8 @@ Do well on Quiz 4: 50 minutes in ORCA (PrairieTest). Started 2026-11-23; the stu
 - Define a file descriptor, use it in C, trace fd / open-file / v-node tables through open, close, fork, dup, dup2; write I/O redirection.
 - Map offsets through flat, extent and hybrid indexes; first-indirect offsets; max file size; block-size trade-offs.
 - Count disk reads for path resolution; hard vs symbolic links; inode / directory / directory entry.
-- Read binary dumps of directories (format pending: need course slides).
+- Read binary dumps of directories (Lesson 6 assumes the v6 16-byte format; confirm with slides).
+- Schedule (pasted 2026-11-25): Quiz 4 is week 12 (week of 11/23) and covers 11/4 Using File System APIs, 11/6 File Descriptor Management, 11/13 Representing Files, 11/16 Building a file index, 11/18 Naming (incl. metadata/stat), 11/20 File System Case Studies (v6, ext2 vs v6).
 
 ## Constraints
 - In the quiz: y86 sheets, cache summary, Amdahl, MSI and MESI diagrams, man pages (open, close, fopen, fclose, read, write, lseek, dup, fork, execve, pipe, ascii).
