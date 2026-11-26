@@ -178,6 +178,7 @@ A <strong>directory</strong> is a file of <strong>(name, inode number)</strong> 
 <!-- ============================================================ -->
 <section class="topic" data-topic="8. Directory hex dumps">
 <h2>8 · Reading a directory from a hex dump</h2>
+<div class="callout"><span class="label">Update</span>Your course's dumps use a different format, the macOS dirent: a 4-byte inode, reclen, type and namlen. <a href="0009-directory-hexdumps.html">Lesson 9</a> drills it, so practise there. This section still teaches little-endian and inode 0.</div>
 <div class="callout"><span class="label">Format assumed</span>Your goals mention "binary dumps of directories" but I don't have the slides that show your course's format, so this uses the v6 layout from Section 7: 16-byte entries, a 2-byte <strong>little-endian</strong> inode number, then a 14-byte name padded with zeros. If your course uses a different layout, send me a slide or a question and I'll rebuild this section.</div>
 <div class="refresh"><span class="label">30-second refresher</span>
 Little-endian means the <strong>low byte comes first</strong>. The bytes <code>2a 01</code> are the number 0x012a = 1 × 256 + 42 = 298. The right-hand column of a dump shows the same bytes as text, with unprintable bytes shown as dots.</div>
@@ -222,6 +223,7 @@ Little-endian means the <strong>low byte comes first</strong>. The bytes <code>2
   <a href="0005-mock-quiz.html">← Previous</a>
   <a href="index.html">Quiz 4 plan</a>
   <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+  <a href="0007-ios-and-max-size-course-style.html">Next →</a>
 </nav>
 </main>
 <script src="../../assets/quiz.js"></script>

@@ -33,12 +33,12 @@
       box.innerHTML = '<p class="q">' + p.q + '</p>' + p.parts.map(function (x) {
         var t = x.kind ? 'text' : 'number';
         return '<p>' + x.label + ' <input type="' + t + '" step="any" class="n" autocomplete="off" spellcheck="false"' +
-          (x.kind ? ' placeholder="letter" style="width:5rem"' : '') + '> ' + (x.unit || '') + '</p>';
+          (x.kind ? ' placeholder="' + (x.ph || 'letter') + '" style="width:' + (x.w || '5rem') + '"' : '') + '> ' + (x.unit || '') + '</p>';
       }).join('') + '<div class="row"><button class="btn chk" type="button">Check</button></div><div class="why"></div>';
       var inputs = box.querySelectorAll('.n');
       function ok(i) {
         var x = p.parts[i], v = inputs[i].value;
-        if (x.kind) return norm(v) === norm(x.text);
+        if (x.kind) return [x.text].concat(x.alts || []).some(function (t) { return norm(v) === norm(t); });
         return Math.abs(Number(v) - x.answer) <= (x.tol || 0) + 1e-9;
       }
       function check() {
@@ -322,5 +322,5 @@
     });
   }
 
-  root.FS = { calc: calc, disk: disk, fd: fd, index: index, maxsize: maxsize, extent: extent, path: path, lseek: lseek, layout: layout, dirdump: dirdump };
+  root.FS = { card: card, calc: calc, disk: disk, fd: fd, index: index, maxsize: maxsize, extent: extent, path: path, lseek: lseek, layout: layout, dirdump: dirdump };
 })(typeof window !== 'undefined' ? window : globalThis);

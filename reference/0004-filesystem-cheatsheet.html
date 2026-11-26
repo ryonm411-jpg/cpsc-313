@@ -47,6 +47,17 @@
 <tr><td>smaller blocks</td><td>faster per block, more accesses per file, lower throughput, less internal fragmentation</td></tr>
 </table>
 
+<h2>Course conventions (PrairieLearn)</h2>
+<table class="data">
+<tr><td>nothing read yet</td><td>IOs = <strong>1 inode</strong> + index levels + 1 data. Single extent = 2</td></tr>
+<tr><td>multi-level depth</td><td>only as deep as the file needs: ≤ p blocks → 1 level, ≤ p² → 2</td></tr>
+<tr><td>max KB</td><td>extent: max × B/1024 · flat: idx blocks × p × B/1024 · multi: r·p<sup>L</sup> × B/1024 · hybrid: (d + s·p + p² + p³) × B/1024</td></tr>
+<tr><td>multi positions</td><td>Level 1 = root; level k = ⌊LBN / p<sup>L−k</sup>⌋ mod p; unused = −1</td></tr>
+<tr><td>hybrid positions</td><td>metadata: directs, then indirects, double, triple. Double: r = LBN − d − p; dbl = ⌊r/p⌋, ind = r mod p</td></tr>
+<tr><td>dirent</td><td>u32 ino · u16 reclen · u8 type (4 DIR, 8 REG, 10 LNK) · u8 namlen · name. Little-endian; hop by reclen; ino 0 = deleted; reclen = 8 + namlen + 1 rounded up to 4</td></tr>
+<tr><td>shared offset?</td><td>dup/dup2/fork/threads: yes · second open(): no</td></tr>
+<tr><td>v6 vs ext2</td><td>v6: superblock block 1, free list, 8 addrs (8 direct | 7 ind + 1 dbl), 16-byte dirent (2 + 14). ext2: groups, bitmaps, 12+1+1+1, variable dirent</td></tr>
+</table>
 <h2>Names</h2>
 <table class="data">
 <tr><td>inode</td><td>metadata + LBN→PBN map; no name</td></tr>

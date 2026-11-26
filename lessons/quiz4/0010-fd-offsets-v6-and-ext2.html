@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offsets, v6 and ext2</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 10</div>
+  <h1>Shared Offsets, and v6 vs ext2</h1>
+  <p class="subtitle">Two smaller topics from your practice set: who shares an offset (I22), and why ext2 was designed differently from v6 (P24, I26).</p>
+</header>
+
+<p><strong>Your win for today:</strong> any I22 variant, plus the v6/ext2 multiple-choice questions. About 20 minutes.</p>
+
+<h2>1 · One question decides every I22: is there one open-file entry or two?</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>How the second fd was made</th><th>Open-file entries</th><th>Offset</th></tr>
+<tr><td><code>dup</code> / <code>dup2</code></td><td>one, refcount 2</td><td><strong>shared</strong></td></tr>
+<tr><td><code>fork</code> (child inherits)</td><td>one, refcount 2</td><td><strong>shared</strong></td></tr>
+<tr><td>another thread using the same fd</td><td>one (threads share the process's fd table)</td><td><strong>shared</strong></td></tr>
+<tr><td>a second <code>open()</code>, even in the same process or thread</td><td>two</td><td><strong>separate</strong></td></tr>
+</table></div>
+<p class="cite">Slides 4.2, slides 5–12: "If two threads are using the same file descriptor, should they be using the same file offset? Yes." Tutorial 8 solution, Q1–3.</p>
+<h3>Your three, solved</h3>
+<ul>
+<li><strong>I22.1:</strong> dup2 → shared. 770 + 903 = <strong>1673</strong>.</li>
+<li><strong>I22.2:</strong> shared. The writes leave the offset at 995 + 1 = 996. The 869-byte read moves it to 1865. readbyte comes from offset 1865, past everything written, so: <strong>not enough information</strong>. It would only be <em>X</em> if a <em>separate</em> fd started at 0 and skipped exactly 995 bytes.</li>
+<li><strong>I22.3:</strong> T1 <em>opens its own</em> fd, so it doesn't touch fd1's entry. T2's <code>dup2(fd, 6)</code> shares fd1's entry and reads 874. fd1's offset is <strong>874</strong>.</li>
+</ul>
+<div class="quiz" data-answer="2"><p class="q">fd1 = open(f); fd2 = open(f); write(fd1, 'c' × 500); write(fd1, "X", 1); read(fd2, buf, 500); read(fd2, &amp;b, 1). What is b?</p><ol class="opts"><li><code>c</code></li><li>not enough info</li><li><code>X</code></li><li>a zero byte</li></ol><div class="why"><p>Separate opens give separate offsets. fd2 starts at 0, skips bytes 0–499 (the c's), and reads byte 500, which is the X. Same file data, so it sees fd1's writes.</p></div></div>
+<p><strong>Drill: I22 variants</strong> (dup2, separate opens, the value read, threads)</p>
+<div id="fdoff"></div>
+
+<h2>2 · v6 in one table</h2>
+<div class="callout"><span class="label">Sources</span>Your slide set has no v6 deck (the 11/20 v6 case study was pre-reading), so this table comes from Lions' Commentary on Unix 6th edition and the course's own <a href="https://www.students.cs.ubc.ca/~cs-313/v6fs/">v6 demo</a>, which slides 4.5 link to. If your pre-reading differs, it wins.</div>
+<div class="table-scroll"><table class="data">
+<tr><th>Piece</th><th>v6</th><th>ext2 (slides 4.6)</th></tr>
+<tr><td>Layout</td><td>block 0 boot, <strong>block 1 superblock</strong>, then inode blocks, then data</td><td>block groups, each with bitmaps + inode table (+ backup superblock in some)</td></tr>
+<tr><td>Free space</td><td><strong>linked free list</strong>: superblock holds up to 100 free PBNs; the first one is a free block holding the next 100, and so on</td><td><strong>bitmaps</strong> (1 bit per block / inode) per group</td></tr>
+<tr><td>Index</td><td>8 addresses. Small file: 8 direct. Large file: 7 indirect + 1 double indirect</td><td>12 direct + 1 indirect + 1 double + 1 triple, 4-byte PBNs</td></tr>
+<tr><td>Directory entry</td><td><strong>fixed 16 bytes</strong>: 2-byte inumber + 14-byte name</td><td>variable: 4-byte inode, rec_len, name_len (+ type), name up to 255, 4-byte aligned</td></tr>
+<tr><td>Contiguous allocation</td><td>hard: the free list ends up in near-random order</td><td>easier: scan the bitmap for a run of free bits close by</td></tr>
+</table></div>
+
+<h2>3 · Practice (P24, I26)</h2>
+<p>These are the pasted questions. For P24.4–P24.6 I've given my best reasoning; mark them against PrairieLearn and tell me if any are wrong.</p>
+<div class="quiz" data-answer="1"><p class="q">P24.2 · Why does the v6 superblock go in block 1?</p><ol class="opts"><li>Different disks are free to put it anywhere</li><li>The OS needs a known spot to mount it</li><li>Earlier blocks are faster to access</li><li>It is a special kind of inode block</li></ol><div class="why"><p>To mount a file system, the OS has to read its parameters before it knows anything else, so they must be at a fixed, known address. Block 0 is the boot block. Slides 4.3: "To mount a file system OS must be able to read its super block."</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">P24.3 · A key goal of v6's linked-list free list?</p><ol class="opts"><li>A full disk needs no free-list blocks beyond the superblock</li><li>Blocks come back out in a roughly random order</li><li>Quickly assembling a list of every free block</li><li>Inserting blocks anywhere by editing PBNs</li></ol><div class="why"><p>The list is stored <em>inside the free blocks themselves</em>, so it costs nothing extra: when the disk is full there are no free blocks, and so no list blocks either. Random order is a side effect, not a goal. Listing every free block means walking the whole chain, and it works like a stack, not something you insert into at arbitrary points. (A bitmap would be smaller per block, so option (e) is false too.)</p></div></div>
+<div class="quiz" data-answer="1,2"><p class="q">P24.4 · A v6 inode's index behaves like… (pick all)</p><ol class="opts"><li>a single extent</li><li>a multi-level index</li><li>a hybrid index</li></ol><div class="why"><p>My reasoning: a small file uses its 8 slots as 8 tree roots of height 0, like the Tutorial 9 multi-level index with 8 roots. A large file mixes levels in one inode (7 single indirect + 1 double indirect), which is what makes an index hybrid. So both multi-level and hybrid. I'm not certain; check it against PrairieLearn.</p></div></div>
+<div class="quiz" data-answer="2,3"><p class="q">P24.5 · What does v6's directory entry scheme focus on? (pick all)</p><ol class="opts"><li>Type metadata for each entry</li><li>Easily human-readable names</li><li>A small maximum entry size</li><li>Easy-to-find entry boundaries</li><li>Saving space for tiny names</li></ol><div class="why"><p>Fixed 16-byte entries: small, and every boundary is a multiple of 16. There's no type field, and a 1-character name still takes 16 bytes.</p></div></div>
+<div class="quiz" data-answer="0,1,2,3,5"><p class="q">P24.6 · What can limit the maximum number of <em>files</em> in v6? (pick all)</p><ol class="opts"><li>The disk's size</li><li>The inverse of the inode size</li><li>The block size</li><li>The bits in an inode number</li><li>Data blocks per inode</li><li>Inode blocks in the superblock</li></ol><div class="why"><p>Every file needs an inode. The count of inodes is inode blocks × inodes per block (block size ÷ inode size), the inode blocks have to fit on the disk, and the 16-bit inumber in the dirent caps it at 65,535. How big a single file can get doesn't limit how many files there are.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">I26.1 · Which file system can more easily allocate files contiguously?</p><ol class="opts"><li>ext2</li><li>V6</li><li>can't tell</li></ol><div class="why"><p>Bitmaps let you search for a run of free blocks, and block groups keep a file near its inode. v6's free list gives blocks back in near-random order after a while.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">I26.2 · Same address size and block size (≥ 512). Which can represent a larger file?</p><ol class="opts"><li>ext2</li><li>V6</li><li>can't tell</li></ol><div class="why"><p>v6 large: 7p + p² blocks. ext2: 12 + p + p² + p³. The triple indirect wins easily.</p></div></div>
+<div class="quiz numeric" data-answer="1"><p class="q">I26.3 · Inode in memory, 4-byte addresses, 512-byte blocks. IOs for v6 to read logical block 2 of a 4-block file?</p><div class="why"><p>4 blocks ≤ 8, so it's a small file with direct pointers: read just the data block. <strong>1</strong>.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">I26.4 · Lots of names 9–14 bytes long. Which uses more directory space?</p><ol class="opts"><li>V6</li><li>ext2</li><li>V6 can't store them</li><li>ext2 can't store them</li><li>both the same</li></ol><div class="why"><p>v6: always 16 bytes (14-character names just fit). ext2: 8-byte header + 9–14 name bytes, 4-byte aligned, which is 20–24 bytes. So ext2 uses more.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">ext2 has 8192-byte blocks and 128-byte inodes, with one bitmap block for inodes. How much data can one block group hold? (Slides 4.6)</p><ol class="opts"><li>64 MB</li><li>8 MB</li><li>1 GB</li><li>512 MB</li></ol><div class="why"><p>One bitmap block = 8192 × 8 = 64K bits → 64K blocks × 8 KB = 512 MB. The inode bitmap allows 64K inodes, which at 64 per block take 1024 blocks.</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <a href="../../../4.6-fsExt2-newVersion.pdf">Slides 4.6</a> (ext2), <a href="../../../4.2-fsAdvanced.pdf">slides 4.2</a> (sharing rules), and the course's <a href="https://www.students.cs.ubc.ca/~cs-313/v6fs/">v6 demo</a>. Click "allocate" a few times and watch the free list change.
+</div>
+<p class="ask">Send me the v6 case-study pre-reading if you have it, and your PrairieLearn results for P24.4–P24.6.</p>
+
+<nav class="lesson-nav">
+  <a href="0009-directory-hexdumps.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script src="../../assets/fs2.js"></script>
+<script>
+  FS2.fdoff(document.getElementById('fdoff'));
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Walking an Index</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 8</div>
+  <h1>Walking an Index: Positions and Block Tables</h1>
+  <p class="subtitle">Same idea as counting IOs, but now you name the exact slot you use at each step, and then follow real block numbers through a table.</p>
+</header>
+
+<p><strong>Your win for today:</strong> fill in the "index at each level" boxes (L8-Ind.13, 14), and follow pointers through a block table to a physical address (I24.4, I24.5). About 25 minutes.</p>
+
+<h2>1 · It's just a number written in base p</h2>
+<p>Each index block has p slots, numbered 0 to p − 1. Going down one level picks one slot, exactly like reading one digit of a number written in base p.</p>
+<div class="callout key"><span class="label">Multi-level (L levels needed; Level 1 is the root)</span>
+Level k position = <strong>⌊LBN / p<sup>L − k</sup>⌋ mod p</strong>. The last level is just <strong>LBN mod p</strong>.<br>
+Levels the file doesn't need get <strong>−1</strong>.</div>
+<p>Check against the course's example (p = 4, 3 levels, LBN 61): 61 in base 4 is 3 3 1, so the positions are <strong>3, 3, 1</strong>.</p>
+<h3>L8-Ind.13, solved</h3>
+<p>8192-byte blocks, 4-byte addresses: p = 2048. The file is 2,048 blocks, so <strong>one</strong> level is enough (≤ p). LBN 1497 → Level 1 = <strong>1497</strong>, Level 2 = <strong>−1</strong>, Level 3 = <strong>−1</strong>. This matches the course example's note that a file of 4 or fewer blocks has index blocks only at level 1.</p>
+<div class="quiz numeric" data-answer="5"><p class="q">p = 8, the file needs 2 levels. What is the Level 1 (root) position for LBN 45?</p><div class="why"><p>⌊45 / 8⌋ = <strong>5</strong> (and Level 2 = 45 mod 8 = 5 too). 45 in base 8 is 55.</p></div></div>
+
+<h2>2 · Hybrid positions</h2>
+<p>Metadata slots go in order: <strong>directs, then indirect(s), then double(s), then triple(s)</strong>. Subtract each region's size until the LBN fits. <span class="cite">Slides 4.4, slides 41–43; course example in L8-Ind.14</span></p>
+<ol class="steps">
+<li>LBN &lt; d → metadata index = LBN. The rest are −1.</li>
+<li>r = LBN − d. If r &lt; p → metadata index = d, indirect index = r.</li>
+<li>r −= p. If r &lt; p² → metadata index = d + 1, <strong>double index = ⌊r / p⌋</strong>, <strong>indirect index = r mod p</strong>.</li>
+<li>r −= p². Triple: metadata index = d + 2, triple index = ⌊r / p²⌋, double index = ⌊(r mod p²) / p⌋, indirect index = r mod p.</li>
+</ol>
+<h3>L8-Ind.14, solved</h3>
+<p>p = 2048, 8 direct. LBN 3,587,025. Subtract 8 → 3,587,017, which is ≥ 2048. Subtract 2048 → <strong>3,584,969</strong>, which is &lt; 2048² = 4,194,304, so it's under the double (metadata index <strong>9</strong>). Double index = ⌊3,584,969 / 2048⌋ = <strong>1750</strong>. Indirect index = 3,584,969 − 1750 × 2048 = <strong>969</strong>. Triple = <strong>−1</strong>.</p>
+<p>Answers: metadata 9, indirect 969, double 1750, triple −1. Watch the box order: PrairieLearn asks for the <em>indirect</em> index before the <em>double</em>.</p>
+<div class="quiz" data-answer="2"><p class="q">The course example: p = 4, 2 direct, 1 indirect, 1 double. Which positions does LBN 19 use?</p><ol class="opts"><li>metadata 2, indirect 3, double 1</li><li>metadata 3, indirect 3, double 1</li><li>metadata 3, indirect 1, double 3</li><li>metadata 2, indirect 1, double 3</li></ol><div class="why"><p>19 − 2 − 4 = 13. Double slot (metadata 3), double index ⌊13/4⌋ = 3, indirect index 13 mod 4 = 1.</p></div></div>
+<p><strong>Drill: positions at each level</strong></p>
+<div id="levels"></div>
+
+<h2>3 · Following pointers through a block table (I24.4, I24.5)</h2>
+<p>Now the slots hold real numbers. With 16-byte blocks and 2-byte addresses, each block holds <strong>8</strong> addresses, so each table row is a PBN followed by 8 numbers.</p>
+<ol class="steps">
+<li>Work out the positions first, as in §1 or §2.</li>
+<li>Find the row whose <strong>first</strong> number is the pointer you're following. Read the number at the position you need (counting from 0, not counting the row's own PBN).</li>
+<li>That number is the next block. Repeat until the last level, whose number is the answer.</li>
+</ol>
+<h3>I24.5, method</h3>
+<p>4 direct, 1 indirect, 1 double, p = 8, LBN 75: 75 − 4 − 8 = 63, so it's under the double indirect (26420). Double position ⌊63/8⌋ = 7, indirect position 63 mod 8 = 7. So: find row <strong>26420</strong>, take its entry 7 → block X; find row X, take its entry 7 → the answer.</p>
+<div class="callout"><span class="label">Your paste lost its spacing</span>The block table in your I24.4/I24.5 paste came through as one long run of digits, so I can't tell where each number ends. Send a screenshot and I'll walk through it with you. The drill below generates tables in the same format.</div>
+<p><strong>Drill: follow the pointers</strong></p>
+<div id="blocks"></div>
+
+<h2>4 · Tutorial 9: when does each structure win?</h2>
+<p>The setup: hybrid with 5 direct, 1, 1, 1 vs. multi-level with 8 roots (trees of height up to 3), p = 2048. In the multi-level index, all 8 trees must be the same height.</p>
+<div class="quiz numeric" data-answer="6"><p class="q">Smallest file size (in blocks) where the <em>hybrid</em> uses more index blocks than the multi-level?</p><div class="why"><p>6 blocks: the hybrid needs its indirect block for the 6th, but the multi-level still uses 6 of its 8 direct roots. (Tutorial 9 solution.)</p></div></div>
+<div class="quiz numeric" data-answer="2049"><p class="q">Example file size where the <em>multi-level</em> uses more index blocks than the hybrid?</p><div class="why"><p>2049: the multi-level needs two height-1 trees (2 index blocks), while the hybrid needs 5 direct + 1 indirect block. (Tutorial 9 solution.)</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <a href="../../../4.4-fsFileIndex.pdf">Slides 4.4</a>, slides 39–43: the hybrid example computes "dIndex = 2046 / 1024 = 1" and "iIndex = 2046 % 1024 = 1022" for LBN 3074. Do it yourself before looking.
+</div>
+<p class="ask">Send me the I24.4/I24.5 screenshot, or any drill you got wrong, in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0007-ios-and-max-size-course-style.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="0009-directory-hexdumps.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script src="../../assets/fs2.js"></script>
+<script>
+  FS2.levels(document.getElementById('levels'));
+  FS2.blocks(document.getElementById('blocks'));
+</script>
+</body>
+</html>

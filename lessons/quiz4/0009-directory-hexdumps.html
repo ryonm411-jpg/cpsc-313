@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Directory Hexdumps</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 9</div>
+  <h1>Reading Directory Hexdumps</h1>
+  <p class="subtitle">"Read binary dumps of directories" is a Quiz 4 learning goal, and I25 shows exactly how it's asked. It comes down to one 8-byte header, read over and over.</p>
+</header>
+
+<p><strong>Your win for today:</strong> answer all four I25 question types: name from inode, type from inode, inode from name, and number of valid entries. You'll do it without a hex converter, since there's no internet in ORCA. About 25 minutes.</p>
+
+<h2>1 · The entry layout</h2>
+<pre><code>struct dirent {
+    ino_t      d_ino;     // 4 bytes   inode number
+    __uint16_t d_reclen;  // 2 bytes   length of THIS entry on disk
+    __uint8_t  d_type;    // 1 byte    4 = DIR, 8 = REG, 10 (0x0a) = LNK
+    __uint8_t  d_namlen;  // 1 byte    how many name bytes follow
+    char       d_name[];  // the name, then padding
+};</code></pre>
+<div class="callout key"><span class="label">Four facts that do all the work</span>
+<strong>1. Little-endian.</strong> <code>64 00 00 00</code> is 0x64, and <code>02 00 10 00</code> is 0x00100002. Read the bytes backwards.<br>
+<strong>2. Hop by d_reclen.</strong> The next entry starts reclen bytes after this one starts. Don't look for it after the name: the padding often holds leftover junk.<br>
+<strong>3. Inode 0 means deleted.</strong> The name bytes are still there, so the same name may show up twice, once deleted and once live.<br>
+<strong>4. 16 bytes per line.</strong> The left column is the offset in hex: line <code>0000040</code> starts at byte 0x40 = 64.<br>
+<span class="cite">Slides 4.5, slides 15–16 and 50 ("inumber 0 is unused… hexdump dumps 16 bytes per line")</span></div>
+<p>In every course dump, <strong>reclen = 8 + namlen + 1, rounded up to a multiple of 4</strong>. That's the 8-byte header, the name and a terminating zero. So "Rodent" (6) → 15 → 16, and "Guinea pig" (10) → 19 → 20. Use it to check your hops. ext2 also pads entries to 4 bytes. <span class="cite">Slides 4.6, "Directory entries are 4-byte aligned"</span></p>
+
+<h2>2 · Reading names without a converter</h2>
+<div class="table-scroll"><table class="data" style="font-family:var(--mono)">
+<tr><th>hex</th><th>char</th><th>hex</th><th>char</th></tr>
+<tr><td>41–5a</td><td>A–Z (41 = A, 50 = P)</td><td>61–7a</td><td>a–z (61 = a, 70 = p)</td></tr>
+<tr><td>20</td><td>space</td><td>2e</td><td><code>.</code></td></tr>
+<tr><td>30–39</td><td>0–9</td><td>00</td><td>end of name / padding</td></tr>
+</table></div>
+<p>You don't usually need to decode every letter. Use <strong>namlen</strong> to see how long it is and the first letter to match it against the choices. In ORCA you have <code>man ascii</code> for the full table.</p>
+
+<h2>3 · I25.1, walked through</h2>
+<pre style="font-size:.8rem">0000000 00 00 10 00 0c 00 04 01 2e 00 00 00 01 00 10 00
+0000010 0c 00 04 02 2e 2e 00 00 64 00 00 00 14 00 08 0a
+0000020 47 75 69 6e 65 61 20 70 69 67 00 12 00 00 00 00
+0000030 10 00 08 06 50 69 67 65 6f 6e 00 70 65 00 00 00
+0000040 14 00 08 09 53 70 6f 6f 6e 62 69 6c 6c 00 00 12
+0000050 66 00 00 00 10 00 08 07 50 65 6c 69 63 61 6e 00
+0000060 02 00 10 00 10 00 04 05 53 6e 61 69 6c 00 6e 00
+0000070 67 00 00 00 14 00 08 09 4d 61 72 73 75 70 69 61
+0000080 6c 00 00 12 68 00 00 00 10 00 0a 06 52 6f 64 65
+...</pre>
+<div class="table-scroll"><table class="data">
+<tr><th>offset</th><th>inode</th><th>reclen</th><th>type</th><th>namlen → name</th><th>next = offset + reclen</th></tr>
+<tr><td>0x00</td><td>0x100000</td><td>12</td><td>4 DIR</td><td>1 → <code>.</code></td><td>0x0c</td></tr>
+<tr><td>0x0c</td><td>0x100001</td><td>12</td><td>4 DIR</td><td>2 → <code>..</code></td><td>0x18</td></tr>
+<tr><td>0x18</td><td>0x64</td><td>0x14 = 20</td><td>8 REG</td><td>10 → Guinea pig</td><td>0x2c</td></tr>
+<tr><td>0x2c</td><td><strong>0 (deleted)</strong></td><td>16</td><td>8</td><td>6 → Pigeon</td><td>0x3c</td></tr>
+<tr><td>0x3c</td><td>0x65</td><td>20</td><td>8 REG</td><td>9 → Spoonbill</td><td>0x50</td></tr>
+<tr><td>0x50</td><td>0x66</td><td>16</td><td>8 REG</td><td>7 → Pelican</td><td>0x60</td></tr>
+<tr><td>0x60</td><td>0x100002</td><td>16</td><td>4 DIR</td><td>5 → Snail</td><td>0x70</td></tr>
+<tr><td>0x70</td><td>0x67</td><td>20</td><td>8 REG</td><td>9 → Marsupial</td><td>0x84</td></tr>
+<tr><td>0x84</td><td><strong>0x68</strong></td><td>16</td><td>0x0a LNK</td><td>6 → <strong>Rodent</strong></td><td>0x94</td></tr>
+</table></div>
+<p>So I25.1's answer is <strong>Rodent</strong>. Note the leftover bytes in the padding: after "Pigeon" at 0x3b there's <code>70</code>, junk from an old name. Hopping by reclen skips past it.</p>
+
+<div class="quiz" data-answer="1"><p class="q">I25.2 (the Reptile/Sheep/Arctic Fox dump): inode 0x68 is at offset 0x8c, with header <code>68 00 00 00 14 00 0a 0a</code>. What type is it?</p><ol class="opts"><li>a directory, DT_DIR</li><li>a symlink, DT_LNK</li><li>a regular, DT_REG</li><li>a deleted entry</li></ol><div class="why"><p>Byte 7 of the entry (d_type) is 0x0a = 10 = DT_LNK. The next byte, also 0a, is namlen (10 → "Arctic Fox"). Don't mix the two up.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">I25.3: "Sparrow" is at offset 0x18 with inode bytes <code>64 00 00 00</code>. Its inode in hex?</p><ol class="opts"><li>0x64</li><li>0x64000000</li><li>0x6400</li><li>0x100</li></ol><div class="why"><p>Little-endian: read the bytes backwards, 00 00 00 64 = 0x64. (In that dump, "Domestic canary" appears twice: the first copy has inode 0, so the live one is 0x66.)</p></div></div>
+<div class="quiz numeric" data-answer="10"><p class="q">I25.4 (Gorilla … Red panda): it has 11 entries, and one of them (the first "Red panda") has inode 0. How many valid entries, counting <code>.</code> and <code>..</code>?</p><div class="why"><p>11 − 1 = <strong>10</strong>. I believe PrairieLearn counts <code>.</code> and <code>..</code>, since they're real entries with real inodes. If it marked 10 wrong, the answer is 8 (not counting them). Tell me which, and I'll fix the drill.</p></div></div>
+
+<p><strong>Drill: random dumps in the I25 format</strong> (every variant type)</p>
+<div id="dirent"></div>
+
+<h2>4 · Resolving a path from a disk picture</h2>
+<p>The slides' example: inodes are in blocks 100–199, 8 per block, root is inumber 2. <strong>Inode n is in block 100 + ⌊n / 8⌋.</strong> Opening <code>/usr/lib/libc.a</code> reads 100 (root inode), 200 (root dir), 102 (inode 16), 204 (/usr), 101 (inode 9), 203 (/usr/lib), 106 (inode 55). <code>open</code> stops at the file's inode and doesn't read its data. <span class="cite">Slides 4.5, slides 21–37; Tutorial 9 solution</span></p>
+<div class="quiz numeric" data-answer="104"><p class="q">Same layout. Which block holds inode 37?</p><div class="why"><p>⌊37 / 8⌋ = 4, so block 100 + 4 = <strong>104</strong> (it's inode 37 mod 8 = 5 within that block).</p></div></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <a href="../../../4.5-fsNaming.pdf">Slides 4.5 Naming</a>, slides 13–37 and 50. For the ASCII table: <code>man ascii</code>, which you also get in the quiz.
+</div>
+<p class="ask">Tell me in the terminal whether PrairieLearn accepted 10 for I25.4.</p>
+
+<nav class="lesson-nav">
+  <a href="0008-index-positions-and-block-tables.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="0010-fd-offsets-v6-and-ext2.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script src="../../assets/fs2.js"></script>
+<script>
+  FS2.dirent(document.getElementById('dirent'));
+</script>
+</body>
+</html>

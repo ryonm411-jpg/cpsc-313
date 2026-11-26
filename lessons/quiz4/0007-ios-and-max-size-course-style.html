@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Index IOs and Sizes</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 7</div>
+  <h1>Counting IOs and Maximum Sizes, the Course's Way</h1>
+  <p class="subtitle">Your pasted I24 and Lab 8 questions follow two rules my earlier lessons didn't use. Learn those two and these questions turn into arithmetic.</p>
+</header>
+
+<p><strong>Your win for today:</strong> answer any variant of I24.1–I24.3, I26.3 and L8-Ind.9–12 correctly. About 20 minutes.</p>
+
+<h2>1 · The two course rules</h2>
+<div class="callout key"><span class="label">Rule 1: the inode counts</span>
+When the question says <em>"neither the file's metadata structure nor any other data or metadata for this file has been read yet"</em>, reading the <strong>inode is an IO</strong>.<br>
+<strong>IOs = 1 (inode) + index blocks on the way down + 1 (the data block).</strong><br>
+If it says the inode is <em>already in memory</em> (I26.3), drop that 1.</div>
+<div class="callout key"><span class="label">Rule 2: a multi-level tree is only as deep as the file needs</span>
+The inode holds the root pointer. A 1-block file: the root points straight at the data (0 index levels). Up to p blocks: one index block. Up to p² blocks: two levels. And so on. <strong>p = block size ÷ address size.</strong> <span class="cite">Slides 4.4, "Multi-level Index (Tree)", slides 27–36</span></div>
+<p>Lesson 3 counted reads "with the inode already in memory". These questions don't make that assumption, so every answer is one higher.</p>
+
+<h2>2 · Your questions, solved</h2>
+<h3>I24.1: single extent</h3>
+<p>1024-byte blocks, max extent 233,332 blocks, read block 104,988. The inode stores the extent's start and length, so the data block is at <em>start + 104,988</em>. Read the inode, then the block: <strong>2 IOs</strong>. The numbers are there to distract you; a single extent is always 2. <span class="cite">Slides 4.3: "Random access needs 2 reads to get disk data (inode + data block)"</span></p>
+<h3>I24.2: multi-level</h3>
+<p>2048-byte blocks, 4-byte addresses: p = 512. The file has 512 blocks, which is ≤ 512, so <strong>one</strong> index block is enough. Inode → index block → data block = <strong>3 IOs</strong>. The "maximum of 2 levels" is just an upper limit; this file doesn't need the second level.</p>
+<h3>I24.3: hybrid</h3>
+<p>4096-byte blocks, <strong>8-byte</strong> addresses: p = 512. The 8 directs cover LBN 0–7. The indirect covers the next 512 (8–519). The double covers the next 512² = 262,144 (520–262,663). Block 145,592 is under the double, so: inode → double block → indirect block → data block = <strong>4 IOs</strong>.</p>
+<h3>I26.3: v6 with the inode in memory</h3>
+<p>A 4-block v6 file uses direct pointers (v6 small files have 8). The inode is already in memory, so you only read the data block: <strong>1 IO</strong>.</p>
+<div class="quiz numeric" data-answer="4"><p class="q">Multi-level, 1024-byte blocks, 4-byte addresses (at most 3 levels). The file has 1,000 blocks. Nothing has been read. IOs to read block 999?</p><div class="why"><p>p = 256. 1,000 &gt; 256, so one level isn't enough; 256² = 65,536 ≥ 1,000, so it takes 2 levels. Inode + 2 index blocks + data = <strong>4</strong>.</p></div></div>
+<div class="quiz numeric" data-answer="2"><p class="q">Hybrid, 12 direct pointers, nothing read yet. IOs to read block 5?</p><div class="why"><p>Block 5 is direct: inode + data = <strong>2</strong>.</p></div></div>
+<p><strong>Drill: IOs, in the course's format</strong></p>
+<div id="ios"></div>
+
+<h2>3 · Maximum file size in KB (L8-Ind.9–12)</h2>
+<p>Count the <strong>data blocks</strong> the structure can reach, then multiply by the block size in KB (block size ÷ 1024).</p>
+<div class="table-scroll"><table class="data">
+<tr><th>Structure</th><th>Data blocks reachable</th><th>Your Lab 8 question</th></tr>
+<tr><td>Single extent</td><td>max extent length</td><td>380,980 × 1 KB = <strong>380,980 KB</strong></td></tr>
+<tr><td>Flat index of <em>k</em> index blocks</td><td>k × p</td><td>p = 2048, so 2,754 × 2,048 × 8 KB = <strong>45,121,536 KB</strong></td></tr>
+<tr><td>Multi-level, r roots, L levels</td><td>r × p<sup>L</sup></td><td>p = 1024, so 1 × 1024² × 4 KB = <strong>4,194,304 KB</strong></td></tr>
+<tr><td>Hybrid</td><td>d + s·p + dd·p² + t·p³</td><td>p = 512, so (6 + 2·512 + 512² + 512³) × 2 KB = <strong>268,961,804 KB</strong></td></tr>
+</table></div>
+<div class="callout"><span class="label">Traps</span>
+For the flat index, "maximum index size of 2,754 blocks" is the size of the <em>index</em>, not of the file. Each index block holds p addresses, so multiply by p. This matches the slides' example: 4 KB blocks with a 1 GB maximum need a 256-block index. <span class="cite">Slides 4.4, slides 19–23</span><br>
+For the hybrid, count <em>every</em> indirect pointer. L8-Ind.12 has <strong>2</strong> singles, so it's 2·p.<br>
+For the extent, the address size doesn't matter.</div>
+<div class="quiz numeric" data-answer="1024"><p class="q">Flat index, 1024-byte blocks, 4-byte addresses, index of 4 blocks. Max file size in KB?</p><div class="why"><p>p = 256. 4 × 256 = 1,024 data blocks × 1 KB = <strong>1,024 KB</strong>.</p></div></div>
+<p><strong>Drill: maximum size in KB</strong></p>
+<div id="maxkb"></div>
+
+<h2>4 · Why these structures? (one-line answers)</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Structure</th><th>Good at</th><th>Bad at</th></tr>
+<tr><td>Single extent</td><td>sequential access, tiny metadata</td><td>sparse files, growing files, <strong>external fragmentation</strong></td></tr>
+<tr><td>Flat</td><td>random access, sparse files</td><td>a 1-byte file needs the whole index (257 blocks in the slides' example)</td></tr>
+<tr><td>Multi-level</td><td>grows easily, sparse files</td><td>even a 2-block file needs an index block</td></tr>
+<tr><td>Hybrid</td><td>small files fast (most files are small), big files possible</td><td>slightly more complicated LBN → PBN mapping</td></tr>
+</table></div>
+<p class="cite">Slides 4.3 slides 17–23 and 4.4 slides 25–44</p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Your slides <a href="../../../4.4-fsFileIndex.pdf">4.4 Building a file index</a>, especially the worked hybrid example (LBN 3074 → double index 1, indirect index 1022). Then <a href="https://pages.cs.wisc.edu/~remzi/OSTEP/file-implementation.pdf">OSTEP ch. 40 §40.3</a>.
+</div>
+<p class="ask">Get one wrong and can't see why? Paste it to me in the terminal.</p>
+
+<nav class="lesson-nav">
+  <a href="0006-weakness-finder.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+  <a href="0008-index-positions-and-block-tables.html">Next →</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script src="../../assets/fs2.js"></script>
+<script>
+  FS2.ios(document.getElementById('ios'));
+  FS2.maxkb(document.getElementById('maxkb'));
+</script>
+</body>
+</html>
