@@ -39,7 +39,7 @@
 - [OSTEP ch. 39 "Files and Directories"](https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf): fds, directories, hard and symbolic links.
 - [OSTEP ch. 40 "File System Implementation"](https://pages.cs.wisc.edu/~remzi/OSTEP/file-implementation.pdf): inodes, multi-level index, extents, path-read walkthrough.
 - CS:APP 3e §6.1.2 (disks), §10.8 (fd / open file / v-node tables), §10.9 (I/O redirection with dup2).
-- GAP: the course's unit 4 slides (file systems, directory dump format) haven't been supplied yet.
+- Course slides 4.1–4.6 supplied 2026-11-25 (see below). Remaining gap: the v6 case-study pre-reading (P23).
 
 ## Course slides, Unit 4 (in cpsc-313/, supplied 2026-11-25)
 - 4.1 fsDecisionSpace, 4.2 fsAdvanced (fd sharing rules, redirection), 4.3 fsFileRepresentation (extents, block size, fragmentation), 4.4 fsFileIndex (flat / multi-level / hybrid, worked LBN 3074 example), 4.5 fsNaming (path walk, dirent, links, hexdump hints), 4.6 fsExt2 (block groups, bitmaps, ext2 inode and dir entries). No v6 deck: P23 was pre-reading.
