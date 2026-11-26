@@ -211,7 +211,8 @@ Little-endian means the <strong>low byte comes first</strong>. The bytes <code>2
 
 <h2>Your results</h2>
 <p>Press the button, then paste the text to me in the terminal. I'll build the next lesson around your lowest topics.</p>
-<div class="row"><button class="btn" type="button" id="copy">Copy my results</button> <span id="copied" class="muted"></span></div>
+<p class="muted">Your answers save automatically in this browser, so you can close the page and come back. They don't carry over to another device or browser; for that, copy your results and paste them to me.</p>
+<div class="row"><button class="btn" type="button" id="copy">Copy my results</button> <button class="btn" type="button" id="clear">Clear saved results</button> <span id="copied" class="muted"></span></div>
 <pre id="results" style="white-space:pre-wrap"></pre>
 
 <div class="callout">
@@ -241,7 +242,24 @@ Little-endian means the <strong>low byte comes first</strong>. The bytes <code>2
 
   // Per-topic scoreboard. Fixed questions: read each one's verdict. Drills: count every Check.
   (function () {
-    var drill = {};
+    // Saved in this browser only (localStorage). Survives closing the page; the Clear button resets it.
+    var KEY = 'q4-weakness-finder-v1', saved = { q: {}, d: {} };
+    try { saved = JSON.parse(localStorage.getItem(KEY)) || saved; } catch (e) {}
+    var allQ = document.querySelectorAll('.quiz:not(.drill)');
+    allQ.forEach(function (q, i) {
+      var v = saved.q[i];
+      if (!v) return;
+      var note = document.createElement('p');
+      note.className = 'muted';
+      note.textContent = v === 'ok' ? 'Saved from last time: ✓ correct. You can answer it again.' : 'Saved from last time: ✗ missed. Try it again from memory.';
+      q.insertBefore(note, q.firstChild);
+    });
+    function persist() {
+      allQ.forEach(function (q, i) { var v = q.querySelector('.verdict'); if (v) saved.q[i] = v.classList.contains('ok') ? 'ok' : 'no'; });
+      saved.d = drill;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+    }
+    var drill = saved.d || {};
     var orig = Quiz.verdict;
     Quiz.verdict = function (box, ok) {
       orig(box, ok);
@@ -255,7 +273,11 @@ Little-endian means the <strong>low byte comes first</strong>. The bytes <code>2
     function tally() {
       return Array.prototype.map.call(document.querySelectorAll('section.topic'), function (s) {
         var qs = s.querySelectorAll('.quiz:not(.drill)'), r = 0, n = 0;
-        qs.forEach(function (q) { var v = q.querySelector('.verdict'); if (v) { n++; if (v.classList.contains('ok')) r++; } });
+        qs.forEach(function (q) {
+          var v = q.querySelector('.verdict'), sv = saved.q[Array.prototype.indexOf.call(allQ, q)];
+          var res = v ? (v.classList.contains('ok') ? 'ok' : 'no') : sv;
+          if (res) { n++; if (res === 'ok') r++; }
+        });
         var d = drill[s.dataset.topic] || { r: 0, n: 0 };
         return { t: s.dataset.topic, r: r, n: n, total: qs.length, dr: d.r, dn: d.n };
       });
@@ -268,10 +290,10 @@ Little-endian means the <strong>low byte comes first</strong>. The bytes <code>2
       }).join('');
       var answered = rows.filter(function (x) { return x.n + x.dn; });
       var weak = answered.slice().sort(function (a, b) { return (a.r + a.dr) / (a.n + a.dn) - (b.r + b.dr) / (b.n + b.dn); }).slice(0, 3);
+      persist();
       var wrong = [];
-      document.querySelectorAll('.quiz:not(.drill)').forEach(function (q) {
-        var v = q.querySelector('.verdict');
-        if (v && v.classList.contains('no')) wrong.push(q.querySelector('.q').textContent.split(' · ')[0]);
+      allQ.forEach(function (q, i) {
+        if (saved.q[i] === 'no') wrong.push(q.querySelector('.q').textContent.split(' · ')[0]);
       });
       document.getElementById('results').textContent = 'Quiz 4 weakness finder (Lesson 6) results\n' +
         rows.map(function (x) { return x.t + ': fixed ' + x.r + '/' + x.n + ' (of ' + x.total + '), drills ' + x.dr + '/' + x.dn; }).join('\n') +
@@ -285,6 +307,10 @@ Little-endian means the <strong>low byte comes first</strong>. The bytes <code>2
       try {
         navigator.clipboard.writeText(txt).then(function () { msg.textContent = 'Copied.'; }, function () { msg.textContent = 'Select the text below and copy it.'; });
       } catch (e) { msg.textContent = 'Select the text below and copy it.'; }
+    });
+    document.getElementById('clear').addEventListener('click', function () {
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      location.reload();
     });
     draw();
   })();
