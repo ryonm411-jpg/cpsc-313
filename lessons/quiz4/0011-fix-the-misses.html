@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fix the Misses</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 11</div>
+  <h1>Fix the Misses</h1>
+  <p class="subtitle">You missed 31 questions in the Lesson 6 weakness finder. They come down to six rules. Each card below gives one rule, then tests it with new numbers.</p>
+</header>
+
+<p><strong>Your goal for today:</strong> get every question below right on the first try. That means you can apply each rule, not just recognise it. It takes about 25 minutes. Read a card's rule once, then answer its questions without scrolling back up. If you miss one, reread the rule and try the random drill at the end of that card.</p>
+
+<h2>1 · Return values: what read and open actually give back <span class="cite">(missed 1.1, 1.3, 1.8, 1.9)</span></h2>
+<div class="callout"><span class="label">Rule</span>
+<code>read(fd, buf, n)</code> returns the number of bytes <em>it actually got</em>. That's n, or fewer if the file runs out first (a <strong>short read</strong>). At end of file it returns <strong>0</strong>. Any failing system call, <code>open</code> included, returns <strong>−1</strong>.<br>
+<strong>Counting read calls:</strong> a loop that stops when read returns 0 makes ⌈size ÷ n⌉ calls that return data, <strong>plus one more</strong> that returns 0. That's true even when n divides the size exactly.<br>
+<code>fopen</code> is a C library wrapper around <code>open</code>. It adds a <strong>user-space buffer</strong> and gives you a <code>FILE *</code> instead of an int.</div>
+<div class="quiz numeric" data-answer="188"><p class="q">A 700-byte file. read(fd, buf, 512) returns 512. What does the next read(fd, buf, 512) return?</p><div class="why"><p>Only 700 − 512 = 188 bytes are left, so it returns 188, a short read. The call after that returns 0.</p></div></div>
+<div class="quiz numeric" data-answer="4"><p class="q">A 3,072-byte file is read with read(fd, buf, 1024) in a loop until read returns 0. How many read calls is that in total?</p><div class="why"><p>3 calls return 1024 bytes each, and the 4th returns 0. Even when n divides the size exactly, the loop needs that extra call to find out the file has ended.</p></div></div>
+<div class="quiz numeric" data-answer="5"><p class="q">The same loop with read(fd, buf, 512) on a 2,000-byte file. Total calls?</p><div class="why"><p>⌈2000 ÷ 512⌉ = 4 calls return data (512, 512, 512, 464), plus 1 that returns 0, for 5.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">open("/root/secret", O_RDONLY) fails because you don't have permission. What's in the returned value?</p><ol class="opts"><li>0</li><li>−1</li><li>3</li><li>NULL</li></ol><div class="why"><p>Every Unix system call reports failure by returning −1 and setting <code>errno</code>. NULL is what <code>fopen</code> returns, because it returns a pointer.</p></div></div>
+<p><strong>Random drill:</strong></p>
+<div id="d-lseek"></div>
+
+<h2>2 · fd numbers, dup and dup2 <span class="cite">(missed 2.1, 2.6, 2.8–2.12)</span></h2>
+<div class="callout"><span class="label">Rule</span>
+<strong>A new fd always takes the lowest free number.</strong> 0, 1 and 2 are already open, so the first <code>open</code> gets 3. If you close 3, the next <code>open</code> or <code>dup</code> reuses 3.<br>
+<strong><code>dup2(old, new)</code> makes fd <code>new</code> point where <code>old</code> points.</strong> To remember the order, read it as "copy old <em>into</em> new". Redirecting output is <code>dup2(fd, 1)</code>. Redirecting input is <code>dup2(fd, 0)</code>. Shells then call <code>close(fd)</code>, which leaves only 0 or 1 pointing at the file.<br>
+<strong>Reference count</strong> = the number of fds, in all processes, that point at the open-file entry.<br>
+<strong>Does the offset get shared?</strong> fds made by <code>dup</code>, <code>dup2</code> or <code>fork</code> share one entry, so they share one offset. Every <code>open()</code> call makes a new entry, so it gets its own offset that starts at 0.</div>
+<div class="quiz numeric" data-answer="4"><p class="q">0–2 are open. a = open(…); b = open(…); c = dup(a); close(b); d = open(…); What is d?</p><div class="why"><p>a = 3, b = 4, c = 5. close(b) frees 4, which is now the lowest free number, so d = 4.</p></div></div>
+<div class="quiz numeric" data-answer="3"><p class="q">fd = open(…) returns 3. Then dup2(3, 0); close(3); x = open(…); What is x?</p><div class="why"><p>After close(3), 3 is the lowest free number again (0, 1 and 2 are in use, and 0 now points at the file). So x = 3.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">fd = open("log.txt", O_WRONLY|O_CREAT|O_TRUNC, 0644); dup2(fd, 2); Where does an error message written to stderr go?</p><ol class="opts"><li>The terminal only</li><li>Nowhere, it's lost</li><li>Into the log.txt</li><li>Both of those places</li></ol><div class="why"><p>Standard error is fd 2. dup2(fd, 2) points fd 2 at log.txt's entry, so anything written to fd 2 goes into the file.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">Which line sends a program's standard <em>output</em> to fd?</p><ol class="opts"><li><code>dup2(1, fd);</code></li><li><code>dup2(fd, 0);</code></li><li><code>dup2(0, fd);</code></li><li><code>dup2(fd, 1);</code></li></ol><div class="why"><p>"Copy old into new": the file (fd) is copied into slot 1, stdout. <code>dup2(1, fd)</code> does the reverse: it points fd at the terminal.</p></div></div>
+<div class="quiz numeric" data-answer="3"><p class="q">A process opens a file once and forks. Then the parent calls dup2(fd, 7). What is the open-file entry's reference count?</p><div class="why"><p>Three fds point at the entry: the parent's fd, the parent's fd 7, and the child's inherited copy of fd. That makes 3.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">The file holds ABCDEFGH. fd1 = open(f); fd2 = open(f); read(fd1, buf, 4); read(fd2, &amp;c, 1). What is c?</p><ol class="opts"><li>A</li><li>E</li><li>D</li><li>B</li></ol><div class="why"><p>Two separate open() calls make two entries with two offsets. fd2's offset is still 0, so it reads A.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">Same file, but this time fd2 = dup(fd1). read(fd1, buf, 4); read(fd2, &amp;c, 1). What is c?</p><ol class="opts"><li>A</li><li>E</li><li>D</li><li>B</li></ol><div class="why"><p>dup shares the entry, so it shares the offset. The offset is already at 4, so fd2 reads E.</p></div></div>
+<p><strong>Random drill:</strong></p>
+<div id="d-fd"></div>
+
+<h2>3 · Index sizes and where each pointer level starts <span class="cite">(missed 4.2, 4.6, 4.8–4.10, 7.3, 7.4)</span></h2>
+<div class="callout"><span class="label">Rule</span>
+p = B ÷ address size, the number of pointers that fit in one index block. Each pointer covers a number of blocks: <strong>direct covers 1, single indirect p, double p², triple p³.</strong><br>
+<strong>Max size</strong> = (number of each pointer type × the blocks it covers, all added up) × B. If there are 7 single indirect pointers, that term is 7p.<br>
+<strong>The first offset a level needs</strong> is the total size of every level before it: single starts at d·B, and double starts at (d + p)·B. Don't add 1. Offsets start at 0, so d direct blocks cover bytes 0 to d·B − 1.<br>
+<strong>Wasted space in the last block</strong> = ⌈size ÷ B⌉·B − size.<br>
+<strong>To find a block in a list of extents</strong>, subtract each extent's length from the LBN until what's left is smaller than the next length. The answer is that extent's start + what's left.</div>
+<p>For this card: B = 1024, addresses are 4 bytes (so p = 256), and the inode has 10 direct, 1 single, 1 double and 1 triple pointer.</p>
+<div class="quiz numeric" data-answer="10240"><p class="q">What's the smallest offset that needs the single indirect block?</p><div class="why"><p>d·B = 10 × 1024 = 10,240. The direct pointers cover bytes 0 to 10,239.</p></div></div>
+<div class="quiz numeric" data-answer="272384"><p class="q">What's the smallest offset that needs the double indirect block?</p><div class="why"><p>(10 + 256) × 1024 = 272,384.</p></div></div>
+<div class="quiz numeric" data-answer="17247250432"><p class="q">What's the largest file this inode can describe, in bytes?</p><div class="why"><p>(10 + 256 + 256² + 256³) × 1024 = (10 + 256 + 65,536 + 16,777,216) × 1024 = 16,843,018 × 1024 = 17,247,250,432. Remember to multiply by B at the end.</p></div></div>
+<div class="quiz numeric" data-answer="68681728"><p class="q">A different design, like v6 large files: <strong>no direct pointers</strong>, 6 single indirect and 1 double indirect, B = 1024, 4-byte addresses. What's the largest file in bytes?</p><div class="why"><p>p = 256. Blocks = 6 × 256 + 256² = 1,536 + 65,536 = 67,072. Then × 1024 = 68,681,728.</p></div></div>
+<div class="quiz numeric" data-answer="1144"><p class="q">B = 2048. How many bytes are wasted in the last block of a 5,000-byte file?</p><div class="why"><p>The file needs ⌈5000 ÷ 2048⌉ = 3 blocks, which is 6,144 bytes. 6,144 − 5,000 = 1,144 bytes wasted.</p></div></div>
+<div class="quiz numeric" data-answer="902"><p class="q">The extents are (120, 4), (50, 3), (900, 6). Which PBN holds LBN 9?</p><div class="why"><p>Subtract the lengths: 9 − 4 = 5, then 5 − 3 = 2. 2 is less than 6, so it's in the third extent: 900 + 2 = 902.</p></div></div>
+<p><strong>Random drills:</strong></p>
+<div id="d-index"></div>
+<div id="d-max"></div>
+
+<h2>4 · Disk timing, and why block size matters <span class="cite">(missed 3.1, 3.2, 3.7, 4.13, 4.14)</span></h2>
+<div class="callout"><span class="label">Rule</span>
+One rotation = 60,000 ÷ RPM ms. Reading one sector costs seek + ½ rotation + (rotation ÷ sectors per track).<br>
+Moving the disk head and waiting for the sector to come round costs <strong>milliseconds</strong>. The transfer itself costs a few hundredths of a millisecond. That's why the OS moves whole blocks at a time: once you've paid to get there, reading extra bytes is almost free. It's also why the inode has direct pointers: most files are small, and direct pointers let a small file be read without any extra index-block reads.<br>
+<strong>Smaller blocks:</strong> less space wasted at the end of each file, and each block transfers faster. But a big file then has more blocks, which means more accesses and lower throughput.</div>
+<div class="quiz numeric" data-answer="6"><p class="q">How long is one rotation at 10,000 RPM, in ms?</p><div class="why"><p>60,000 ÷ 10,000 = 6 ms.</p></div></div>
+<div class="quiz numeric" data-answer="8.02" data-tol="0.006"><p class="q">The seek is 5 ms, the disk spins at 10,000 RPM and there are 300 sectors per track. What's the average time to read one sector, in ms (2 decimals)?</p><div class="why"><p>5 + 3 (half a rotation) + 6 ÷ 300 (0.02) = 8.02 ms. Nearly all of it is positioning.</p></div></div>
+<div class="quiz" data-answer="1,3"><p class="q">File system X uses bigger blocks than Y. Which are true of X? (Pick all that apply.)</p><ol class="opts"><li>Wastes less space on tiny files</li><li>Reads a big file in fewer accesses</li><li>Transfers one block in less time</li><li>Gets more throughput on big files</li></ol><div class="why"><p>Bigger blocks mean fewer accesses and higher throughput on big files. But each block takes longer to transfer, and more of the last block is wasted.</p></div></div>
+<p><strong>Random drill:</strong></p>
+<div id="d-disk"></div>
+
+<h2>5 · Links and metadata <span class="cite">(missed 5.6, 5.8, 6.5, 6.6)</span></h2>
+<div class="callout"><span class="label">Rule</span>
+<strong>A directory's link count</strong> = 2 + its number of subdirectories. The 2 are its entry in its parent and its own <code>.</code>. Each subdirectory's <code>..</code> adds 1. Regular files inside it add nothing.<br>
+<strong>A symbolic link's data is the path text</strong> you gave it, exactly as written. Its size is the length of that text.<br>
+<strong>A hard link is the same inode</strong>, so <code>ls -i</code> shows the same inode number for both names. <code>lstat</code> describes the link itself (the "l" is for link). <code>stat</code> follows the link to the file it points to.</div>
+<div class="quiz numeric" data-answer="7"><p class="q">Directory p contains 5 subdirectories and 2 regular files. What is p's link count?</p><div class="why"><p>2 + 5 = 7. The files add nothing.</p></div></div>
+<div class="quiz numeric" data-answer="13"><p class="q">ln -s ../data/x.csv s. How many bytes of data does s hold?</p><div class="why"><p>The text "../data/x.csv" is 13 characters, so 13 bytes. It stores the relative path exactly as given, not the absolute one.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">s is a symlink to big.dat. Which call reports big.dat's size?</p><ol class="opts"><li><code>lstat("s")</code></li><li><code>lstat("x")</code></li><li><code>stat("s")</code></li><li><code>stat("l")</code></li></ol><div class="why"><p>stat follows the link to big.dat. lstat would report the link's own size, which is the length of the text "big.dat" (7).</p></div></div>
+
+<h2>6 · MESI, and ext2's free-space tracking <span class="cite">(missed 9.1, 9.2, 9.5, 7.6)</span></h2>
+<div class="callout"><span class="label">Rule</span>
+<strong>Writing in E:</strong> the line moves to M <em>without any bus message</em>. E already guarantees nobody else has a copy. This is the reason MESI exists.<br>
+<strong>Writing in S:</strong> the core must invalidate the other copies first. The writer moves to M and <strong>every other copy goes to I</strong>.<br>
+The "only one M" rule applies to one <strong>memory line</strong>. Two caches can both be in M in the same <em>set</em>, because they can hold different lines there.<br>
+<strong>ext2 tracks free blocks with a bitmap</strong> in each block group. v6 used a linked free list.</div>
+<div class="quiz" data-answer="2"><p class="q">MESI. Core 3 holds a line in E and writes to it. What happens?</p><ol class="opts"><li>Goes to S, no bus message</li><li>Goes to M, sends invalidate</li><li>Goes to M, no bus message</li><li>Stays E, writes to memory</li></ol><div class="why"><p>E means nobody else holds the line, so there's no one to invalidate. The core upgrades to M silently.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">MESI. Cores 1, 2 and 3 all hold a line in S. Core 2 writes. What are the states of Cores 1 and 3?</p><ol class="opts"><li>S and S</li><li>E and E</li><li>M and I</li><li>I and I</li></ol><div class="why"><p>Core 2 invalidates every other copy and moves to M. Cores 1 and 3 both go to I.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">Two caches, same set. Can one be in M while the other is also in M?</p><ol class="opts"><li>Yes, the lines can differ</li><li>No, only one M is allowed</li><li>Only under MSI, not MESI</li><li>Only if neither is dirty</li></ol><div class="why"><p>Being in the same set doesn't mean holding the same line. Any pair of states is possible.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">How does ext2 find free blocks?</p><ol class="opts"><li>A free list in the superblock</li><li>A bitmap in each block group</li><li>A free flag in each data block</li><li>A scan of every inode at boot</li></ol><div class="why"><p>One bit per block. Scanning a bitmap makes it easy to find free blocks that sit next to each other.</p></div></div>
+
+<h2>What's next</h2>
+<p>Once every card here is right, do <a href="0007-ios-and-max-size-course-style.html">Lessons 7–10</a> if you haven't yet. They're built from your real slides and PrairieLearn questions. Then retake the <a href="0005-mock-quiz.html">mock quiz</a> timed, and paste me your score.</p>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  <a href="../../../4.2-fsAdvanced.pdf">Slides 4.2</a> for fds and sharing, and <a href="../../../dup-2.pdf">man dup(2)</a> for the exact dup2 argument order. <a href="../../../4.4-fsFileIndex.pdf">Slides 4.4</a> cover index structures. <a href="https://pages.cs.wisc.edu/~remzi/OSTEP/file-intro.pdf">OSTEP ch. 39</a> explains links, stat and the fd tables clearly.
+</div>
+<p class="ask">If a rule here doesn't make sense, or you got a card wrong and can't see why, ask me in the terminal. Paste the question and your answer.</p>
+
+<nav class="lesson-nav">
+  <a href="0010-fd-offsets-v6-and-ext2.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+<script src="../../assets/fs.js"></script>
+<script>
+  FS.lseek(document.getElementById('d-lseek'));
+  FS.fd(document.getElementById('d-fd'));
+  FS.index(document.getElementById('d-index'));
+  FS.maxsize(document.getElementById('d-max'));
+  FS.disk(document.getElementById('d-disk'));
+</script>
+</body>
+</html>
