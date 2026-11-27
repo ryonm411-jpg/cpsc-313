@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice Quiz 4</title>
+<link rel="stylesheet" href="../../assets/course.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <div class="kicker">CPSC 313 · Unit 4 · Quiz 4 prep · Lesson 12</div>
+  <h1>Practice Quiz 4, Course Style</h1>
+  <p class="subtitle">36 questions in the formats your course actually uses: R4, I22, I24, I25, I26, Lab 8 and P24, all with new numbers. Unlike the Lesson 5 mock, this one follows the course's own conventions.</p>
+</header>
+
+<div class="callout key">
+  <span class="label">How to take it</span>
+  Set a 50-minute timer, the same length as the ORCA quiz. Allow yourself what ORCA allows: a calculator, paper, the <a href="../../../diagramMESI.pdf">MESI diagram</a>, <code>man ascii</code>, and the man pages for open, read, lseek, dup and fork. Keep the lessons and cheat sheet closed. Each question is marked as soon as you answer, so work it out on paper first. Tick your misses in the table at the bottom.<br>
+  <strong>Course conventions used here</strong> (from your PrairieLearn questions): if nothing has been read yet, reading the inode counts as an IO. A multi-level tree uses only as many levels as the file needs. Levels the file doesn't use are written −1. Directory dumps use the macOS dirent format. <code>open()</code> reads the path up to the file's inode, but not the file's data.<br>
+  This is my own prediction of the question types, based on your learning goals and practice questions. It isn't the real quiz.
+</div>
+
+<h2>A · Disks (R4.6, R4.7)</h2>
+<div class="quiz numeric" data-answer="8.18" data-tol="0.006"><p class="q">1 · The average seek is 4 ms, the disk spins at 7,200 RPM, and there are 500 sectors per track. What is the average time to read one sector, in ms (2 decimals)?</p><div class="why"><p>Rotation = 60,000 ÷ 7,200 = 8.333 ms. Half of that is 4.167, and one sector's transfer is 8.333 ÷ 500 = 0.017. Total: 4 + 4.167 + 0.017 = 8.18 ms.</p></div></div>
+<div class="quiz" data-answer="0,1"><p class="q">2 · A new disk spins <em>slower</em>, with the same arm and the same sectors per track. Which statements are true? (Pick all that apply.)</p><ol class="opts"><li>The seek time stays the same</li><li>The rotational latency grows</li><li>The transfer time per sector shrinks</li><li>The throughput gets higher</li></ol><div class="why"><p>Seek time depends on the arm, so it doesn't change. A slower spin makes each rotation longer, which increases the rotational latency <em>and</em> the transfer time, and lowers the throughput.</p></div></div>
+<div class="quiz numeric" data-answer="15" data-tol="0.006"><p class="q">3 · Seek 8 ms, 6,000 RPM, 250 sectors per track. A 50-sector file sits in consecutive sectors on one track. How long does it take to read the whole file, in ms?</p><div class="why"><p>Rotation = 10 ms. You pay the seek and the rotational wait once: 8 + 5. Then 50 sectors × 0.04 = 2. Total: 15 ms.</p></div></div>
+<div class="quiz numeric" data-answer="652" data-tol="0.006"><p class="q">4 · Same disk and same file, but now every sector is in a random place. How long does it take, in ms?</p><div class="why"><p>Each sector pays the seek and the rotational wait again: 50 × (8 + 5 + 0.04) = 652 ms, about 43 times slower. That gap is why ext2 tries to keep files contiguous.</p></div></div>
+
+<h2>B · System calls and file descriptors (R4.4, R4.5, I22)</h2>
+<div class="quiz" data-answer="2"><p class="q">5 · Which pair of lines implements <code>prog &gt; out.txt</code>?</p><ol class="opts"><li><code>fd = open("out.txt", O_RDONLY); dup2(fd, 0);</code></li><li><code>fd = open("out.txt", O_WRONLY|O_CREAT); dup2(1, fd);</code></li><li><code>fd = open("out.txt", O_WRONLY|O_CREAT); dup2(fd, 1);</code></li><li><code>fd = open("out.txt", O_RDONLY); dup2(fd, 1);</code></li></ol><div class="why"><p>Output means fd 1, and the file has to be opened for writing. <code>dup2(fd, 1)</code> copies fd into slot 1. Option 2 has the arguments reversed.</p></div></div>
+<div class="quiz numeric" data-answer="100"><p class="q">6 · A file is 2,000 bytes long. lseek(fd, 300, SEEK_SET); read(fd, buf, 1000); lseek(fd, -100, SEEK_END); x = read(fd, buf, 500); What is x?</p><div class="why"><p>SEEK_END − 100 puts the offset at 1,900. Only 100 bytes are left, so this is a short read: x = 100.</p></div></div>
+<div class="quiz numeric" data-answer="855"><p class="q">7 · fd1 = open(f); dup2(fd1, 9); read(fd1, buf, 640); read(9, buf, 215); What does lseek(fd1, 0, SEEK_CUR) return?</p><div class="why"><p>dup2 makes fd 9 share fd1's entry, so both reads move the same offset: 640 + 215 = 855.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">8 · fd1 = open(f); fd2 = open(f); write(fd1, 300 × 'a'); write(fd1, "Q", 1); read(fd2, buf, 300); read(fd2, &amp;c, 1); What is c?</p><ol class="opts"><li><code>a</code></li><li>not enough info</li><li><code>Q</code></li><li>a zero byte</li></ol><div class="why"><p>The two opens have separate offsets. fd2 starts at 0, skips bytes 0–299 (the a's), and reads byte 300. Both fds see the same file data, so that byte is Q.</p></div></div>
+<div class="quiz numeric" data-answer="150"><p class="q">9 · Two threads in the same process share fd 3. Thread 1 reads 100 bytes and thread 2 then reads 50. What is fd 3's offset now?</p><div class="why"><p>Threads share the process's fd table, so they share the open-file entry and its offset: 150. (Slides 4.2.)</p></div></div>
+<div class="quiz numeric" data-answer="2"><p class="q">10 · A process opens a file once and forks. The child calls dup() on that fd, and then the parent calls close() on its own copy. What is the open-file entry's reference count?</p><div class="why"><p>After open, fork and dup, three fds point at the entry: 3. The parent's close brings it down to 2.</p></div></div>
+<div class="quiz numeric" data-answer="0"><p class="q">11 · 0–2 are open. close(0); a = open("in.txt", O_RDONLY); What is a?</p><div class="why"><p>0 is now the lowest free number, so a = 0. This is the older way of redirecting input, done without dup2.</p></div></div>
+
+<h2>C · Index structures (I24, Lab 8, R4.8–R4.12)</h2>
+<p>For this section, nothing about the file has been read yet unless a question says otherwise.</p>
+<div class="quiz numeric" data-answer="2"><p class="q">12 · Single extent, 4,096-byte blocks, maximum extent 900,000 blocks. How many IOs to read block 517,203?</p><div class="why"><p>Read the inode to get the extent's start, then read the data block at start + 517,203. That's 2 IOs. With a single extent the answer is always 2.</p></div></div>
+<div class="quiz numeric" data-answer="4"><p class="q">13 · Multi-level index (at most 3 levels), 4,096-byte blocks, 4-byte addresses. The file has 5,000 blocks. How many IOs to read block 4,321?</p><div class="why"><p>p = 1,024. 5,000 is more than 1,024, so one level isn't enough, but 1,024² is, so the file needs 2 levels. Inode + 2 index blocks + data = 4.</p></div></div>
+<div class="quiz numeric" data-answer="4"><p class="q">14 · Hybrid index: 2,048-byte blocks, 4-byte addresses, 10 direct, 1 indirect, 1 double, 1 triple. How many IOs to read LBN 600?</p><div class="why"><p>p = 512. The directs cover LBNs 0–9 and the indirect covers 10–521. LBN 600 is past that, so it's under the double: inode → double block → indirect block → data = 4.</p></div></div>
+<div class="quiz numeric" data-answer="204800"><p class="q">15 · Flat index, 4,096-byte blocks, 8-byte addresses, and the index can be at most 100 blocks. What is the largest file, in KB?</p><div class="why"><p>p = 512. 100 index blocks × 512 = 51,200 data blocks, × 4 KB = 204,800 KB.</p></div></div>
+<div class="quiz numeric" data-answer="65804"><p class="q">16 · Hybrid index, 1,024-byte blocks, 4-byte addresses, 12 direct, 1 indirect, 1 double, <strong>no triple</strong>. What is the largest file, in KB?</p><div class="why"><p>p = 256. (12 + 256 + 65,536) blocks × 1 KB = 65,804 KB.</p></div></div>
+<div class="quiz numeric" data-answer="1064960"><p class="q">17 · 2,048-byte blocks, 4-byte addresses, 8 direct pointers. What is the smallest byte offset that needs the double indirect block?</p><div class="why"><p>(8 + 512) × 2,048 = 1,064,960.</p></div></div>
+<div class="quiz numeric" data-answer="14"><p class="q">18 · Multi-level, p = 16, and the file needs 3 levels. LBN 1,000. What is the <strong>Level 2</strong> position?</p><div class="why"><p>Write 1,000 in base 16: 1,000 = 3·256 + 14·16 + 8, so the positions are 3, 14, 8. Level 2 is 14.</p></div></div>
+<div class="quiz numeric" data-answer="3"><p class="q">19 · Hybrid, p = 1,024, 12 direct, then 1 indirect, 1 double, 1 triple. LBN 5,000. What is the <strong>double index</strong>?</p><div class="why"><p>5,000 − 12 = 4,988, which is at least 1,024. Subtract 1,024 to get 3,964, which is less than 1,024², so it's under the double. Double index = ⌊3,964 ÷ 1,024⌋ = 3.</p></div></div>
+<div class="quiz numeric" data-answer="892"><p class="q">20 · Same LBN. What is the <strong>indirect index</strong>?</p><div class="why"><p>3,964 mod 1,024 = 3,964 − 3,072 = 892. The metadata index is 13 and the triple is −1.</p></div></div>
+<div class="quiz numeric" data-answer="65"><p class="q">21 · Extents (start, length): (300, 4), (1020, 8), (64, 5). Which PBN holds LBN 13?</p><div class="why"><p>13 − 4 = 9, then 9 − 8 = 1. That lands in the third extent at offset 1: 64 + 1 = 65.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">22 · In which structure does a 1-byte file still need the entire index allocated?</p><ol class="opts"><li>Single extent</li><li>Flat index</li><li>Multi-level</li><li>Hybrid index</li></ol><div class="why"><p>A flat index is one fixed array that's sized for the largest possible file. Slides 4.4 give the example of a 1-byte file using 257 blocks.</p></div></div>
+<div class="quiz" data-answer="0"><p class="q">23 · Which structure suffers most from external fragmentation and from files that grow?</p><ol class="opts"><li>Single extent</li><li>Flat index</li><li>Multi-level</li><li>Hybrid index</li></ol><div class="why"><p>A single extent needs one contiguous run of free blocks. If the blocks right after the file are taken, it can't grow in place.</p></div></div>
+
+<h2>D · Naming, metadata and links (R4.13–R4.15, slides 4.5)</h2>
+<div class="quiz numeric" data-answer="7"><p class="q">24 · Nothing is cached, every inode is in its own block, and each directory fits in one block. How many IOs does <code>open("/x/y/z.dat", O_RDONLY)</code> take?</p><div class="why"><p>/, x and y each cost their inode plus their data block: 6. Then z.dat's inode: 7. open() doesn't read the file's data. (Tutorial 9.)</p></div></div>
+<div class="quiz numeric" data-answer="8"><p class="q">25 · The program then reads z.dat's first byte. How many IOs in total, counting the open?</p><div class="why"><p>7 + 1 data block = 8. That's the same as the formula 2(k + 1) with k = 3.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">26 · Which structure maps a file name to an inode number?</p><ol class="opts"><li>the inode</li><li>a dir entry</li><li>a superblock</li><li>a data bitmap</li></ol><div class="why"><p>A directory entry is a (name, inode number) pair. The inode holds everything about the file except its name.</p></div></div>
+<div class="quiz numeric" data-answer="2"><p class="q">27 · touch f; ln f g; ln -s f h; ln g k; rm f. What is the link count of the inode that f used to name?</p><div class="why"><p>f, g and k are all hard links to the same inode, for a count of 3. The symlink h doesn't count. rm f leaves 2. h now dangles, because it stores the text "f".</p></div></div>
+<div class="quiz numeric" data-answer="6"><p class="q">28 · Directory d contains 4 subdirectories and 10 regular files. What is d's link count?</p><div class="why"><p>2 + 4 = 6. The 2 are d's entry in its parent and d's own <code>.</code>. Each subdirectory's <code>..</code> adds 1. Files add nothing.</p></div></div>
+
+<h2>E · Directory hexdump (I25)</h2>
+<p>Here is one directory's data block, in the macOS dirent format: a 4-byte inode, a 2-byte reclen, a 1-byte type (4 = DIR, 8 = REG, 10 = LNK), a 1-byte namlen, then the name. Everything is little-endian. Hop from one entry to the next by reclen.</p>
+<pre style="font-size:.8rem">0000000 10 00 20 00 0c 00 04 01 2e 00 00 00 01 00 20 00
+0000010 0c 00 04 02 2e 2e 00 00 71 00 00 00 10 00 08 05
+0000020 4f 74 74 65 72 00 00 00 00 00 00 00 10 00 08 06
+0000030 42 61 64 67 65 72 00 00 6a 00 00 00 10 00 04 04
+0000040 4c 79 6e 78 00 00 00 00 80 00 00 00 14 00 0a 09
+0000050 74 6f 64 6f 2d 6c 69 73 74 00 00 00 75 00 00 00
+0000060 10 00 08 05 48 65 72 6f 6e 00 00 00 9c 00 00 00
+0000070 10 00 08 06 42 61 64 67 65 72 00 00 00 00 00 00</pre>
+<div class="quiz" data-answer="2"><p class="q">29 · What is the inode number of Heron?</p><ol class="opts"><li>0x71</li><li>0x6a</li><li>0x75</li><li>0x9c</li></ol><div class="why"><p>Heron's entry starts at 0x5c with the bytes <code>75 00 00 00</code>, which is 0x75. 0x71 is Otter's inode.</p></div></div>
+<div class="quiz" data-answer="3"><p class="q">30 · What type is <code>todo-list</code>?</p><ol class="opts"><li>DIR</li><li>REG</li><li>DEL</li><li>LNK</li></ol><div class="why"><p>Its entry is at 0x48: inode 0x80, reclen 0x14 = 20, type 0x0a = 10, which is a symbolic link. Its reclen is 20 because 8 + 9 + 1 = 18, rounded up to 20.</p></div></div>
+<div class="quiz" data-answer="1"><p class="q">31 · Which name has inode 0x9c?</p><ol class="opts"><li>Lynx</li><li>Badger</li><li>Otter</li><li>Heron</li></ol><div class="why"><p>The last entry is 0x9c, Badger. The earlier Badger at 0x28 has inode 0, so it's a deleted leftover. The same name can appear twice this way.</p></div></div>
+<div class="quiz numeric" data-answer="7"><p class="q">32 · How many valid entries does this directory have, counting <code>.</code> and <code>..</code>?</p><div class="why"><p>There are 8 entries, and one of them (the first Badger) has inode 0, which leaves 7. Without . and .. it would be 5. Read the question to see which one it wants.</p></div></div>
+
+<h2>F · v6 and ext2 (I26, P24)</h2>
+<div class="quiz" data-answer="0"><p class="q">33 · Which file system can more easily allocate a file contiguously?</p><ol class="opts"><li>ext2</li><li>V6</li><li>can't tell</li></ol><div class="why"><p>ext2's bitmaps let it search for a run of free blocks, and its block groups keep data near the inode. v6's free list hands blocks out in nearly random order.</p></div></div>
+<div class="quiz numeric" data-answer="2"><p class="q">34 · v6, with the inode in memory and 512-byte blocks. A 20-block file is a "large" file, so its first 7 slots are single indirect pointers. How many IOs to read LBN 10?</p><div class="why"><p>One indirect block (2-byte addresses, so p = 256) covers LBNs 0–255. Read that indirect block, then the data block: 2.</p></div></div>
+<div class="quiz" data-answer="2"><p class="q">35 · ext2 with 4,096-byte blocks and one block bitmap per group. How much data can one block group hold?</p><ol class="opts"><li>32 MB</li><li>4 MB</li><li>128 MB</li><li>1 GB</li></ol><div class="why"><p>One bitmap block has 4,096 × 8 = 32,768 bits, which tracks 32,768 blocks. × 4 KB = 128 MB.</p></div></div>
+
+<h2>G · Coherence (R4.2, R4.3)</h2>
+<div class="quiz" data-answer="0,1"><p class="q">36 · Which events end in different states under the course's MSI and MESI diagrams? (Pick all that apply.)</p><ol class="opts"><li>A read miss on a line nobody holds</li><li>Core 2 reads Core 1's M line</li><li>A core writes to its S line</li><li>Every core is in state I</li></ol><div class="why"><p>A read miss with no other copies gives S in MSI and E in MESI. A remote read of an M line goes M → I on the course MSI diagram and M → S in MESI. Writing to an S line goes to M and invalidates the others in both protocols.</p></div></div>
+
+<h2>Score it</h2>
+<div class="table-scroll"><table class="data">
+<tr><th>Section</th><th>Questions</th><th>If you missed any, redo</th></tr>
+<tr><td>A · Disks</td><td>1–4</td><td><a href="0001-disks-from-scratch.html">Lesson 1</a>, <a href="0011-fix-the-misses.html">Lesson 11 §4</a></td></tr>
+<tr><td>B · fds</td><td>5–11</td><td><a href="0011-fix-the-misses.html">Lesson 11 §1–2</a>, <a href="0010-fd-offsets-v6-and-ext2.html">Lesson 10 §1</a></td></tr>
+<tr><td>C · Indexes</td><td>12–23</td><td><a href="0007-ios-and-max-size-course-style.html">Lesson 7</a>, <a href="0008-index-positions-and-block-tables.html">Lesson 8</a></td></tr>
+<tr><td>D · Naming</td><td>24–28</td><td><a href="0004-paths-links-and-review.html">Lesson 4</a>, <a href="0011-fix-the-misses.html">Lesson 11 §5</a></td></tr>
+<tr><td>E · Dumps</td><td>29–32</td><td><a href="0009-directory-hexdumps.html">Lesson 9</a></td></tr>
+<tr><td>F · v6/ext2</td><td>33–35</td><td><a href="0010-fd-offsets-v6-and-ext2.html">Lesson 10 §2–3</a></td></tr>
+<tr><td>G · Coherence</td><td>36</td><td><a href="0011-fix-the-misses.html">Lesson 11 §6</a>, <a href="../quiz3/0007-msi-and-mesi.html">Quiz 3 Lesson 7</a></td></tr>
+</table></div>
+
+<div class="callout">
+  <span class="label">Primary source</span>
+  Your own practice questions on PrairieLearn (R4, I22–I26, Lab 8). Redo them with new variants after this, because the real quiz draws on the same question pools. For the theory behind them, read slides <a href="../../../4.4-fsFileIndex.pdf">4.4</a> and <a href="../../../4.5-fsNaming.pdf">4.5</a>.
+</div>
+<p class="ask">Paste me your score and the numbers you missed in the terminal, and I'll build the next round around them. If a question confuses you, ask about it.</p>
+
+<nav class="lesson-nav">
+  <a href="0011-fix-the-misses.html">← Previous</a>
+  <a href="index.html">Quiz 4 plan</a>
+  <a href="../../reference/0004-filesystem-cheatsheet.html">Cheat sheet</a>
+</nav>
+</main>
+<script src="../../assets/quiz.js"></script>
+</body>
+</html>
